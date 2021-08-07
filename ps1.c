@@ -39,7 +39,10 @@ union cop_registers {
 void load_bios() {
   int fd = open("BIOS/ps-22a.bin", O_RDONLY);
   int bytes = read(fd, rom, 524288);
-  if(bytes != 524288) printf("ROM READ FAILED!\n");
+  if(bytes != 524288) {
+    printf("ROM READ FAILED!\n");
+    exit(1);
+  }
   close(fd);
 }
 
@@ -401,8 +404,8 @@ void decode_and_execute(uint32_t instruction) {
       set_reg(rt, (int32_t)reg[rs] < (int16_t)imm);
       break;
     case 0x0B:
-      ;;printf("SLTIU: Setting R%u to R%u(%u) < %u\n", rt, rs, reg[rs], imm);
-      set_reg(rt, reg[rs] < imm);
+      ;;printf("SLTIU: Setting R%u to R%u(%u) < %u\n", rt, rs, reg[rs], (int16_t)imm);
+      set_reg(rt, reg[rs] < (int16_t)imm);
       break;
     case 0x0C:
       ;;printf("ANDI: AND 0x%04X with R%u(0x%08X) and storing into R%u\n", imm, rs, reg[rs], rt);
