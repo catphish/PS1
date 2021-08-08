@@ -22,41 +22,37 @@ const char cop_register_names[64][9] = {
     "TagLo",    "TagHi",    "ErrorEPC", "*RES*"
   };
 
-cop_registers_t cpu_cop_registers;
+cpu_t cpu;
 
-uint32_t pc, next_pc, current_pc, hi, lo;
-uint32_t reg[32];
-uint32_t sr;
-
-void set_reg(uint8_t r, uint32_t v) {
+void cpu_set_reg(uint8_t r, uint32_t v) {
   // Multiplying by !!r causes zero to always be written to r0
-  reg[r] = v * !!r;
+  cpu.reg[r] = v * !!r;
 }
 
 void cpu_exception(uint32_t cause) {
   uint32_t handler;
-  if(cpu_cop_registers.sr & (1<<22)) {
+  if(cpu.cop0.sr & (1<<22)) {
     handler = 0xbfc00180;
   } else {
     handler = 0x80000080;
   }
 
-  uint32_t mode = cpu_cop_registers.sr << 2;
+  uint32_t mode = cpu.cop0.sr << 2;
   mode &= 0x3F;
-  cpu_cop_registers.sr &= ~0x3F;
-  cpu_cop_registers.sr |= mode;
+  cpu.cop0.sr &= ~0x3F;
+  cpu.cop0.sr |= mode;
 
-  cpu_cop_registers.cause = cause << 2;
-  cpu_cop_registers.epc = current_pc;
+  cpu.cop0.cause = cause << 2;
+  cpu.cop0.epc = cpu.current_pc;
   // This is a hack to guess whether we're in a branch delay slot
-  if(pc != current_pc + 4) cpu_cop_registers.epc = current_pc - 4;
+  if(cpu.pc != cpu.current_pc + 4) cpu.cop0.epc = cpu.current_pc - 4;
 
-  pc = handler;
-  next_pc = handler + 4;
+  cpu.pc = handler;
+  cpu.next_pc = handler + 4;
 }
 
 void decode_and_execute(uint32_t instruction) {
-  if(current_pc % 4) {
+  if(cpu.current_pc % 4) {
     cpu_exception(4);
     return;
   }
@@ -68,7 +64,7 @@ void decode_and_execute(uint32_t instruction) {
   uint32_t imm26 = (instruction & 0x3FFFFFF);
   uint16_t imm = (instruction & 0xFFFF);
   uint8_t imm5 = (instruction >> 6) & 0x1F;
-  //printf("%08x ", current_pc);
+  //printf("%08x ", cpu.current_pc);
   //printf("%08x: ", instruction);
 
   uint32_t location;
@@ -80,135 +76,138 @@ void decode_and_execute(uint32_t instruction) {
           if(instruction == 0) {
             //printf("nop    ");
           } else {
-            //printf("sll    $%s(%08x), $%s(%08x), 0x%02x", register_names[rd], reg[rd], register_names[rt], reg[rt], imm5);
-            set_reg(rd, reg[rt] << imm5);
+            //printf("sll    $%s(%08x), $%s(%08x), 0x%02x", register_names[rd], cpu.reg[rd], register_names[rt], cpu.reg[rt], imm5);
+            cpu_set_reg(rd, cpu.reg[rt] << imm5);
           }
           break;
         case 0x02:
-          //printf("srl    $%s(%08x), $%s(%08x), 0x%02x", register_names[rd], reg[rd], register_names[rt], reg[rt], imm5);
-          set_reg(rd, reg[rt] >> imm5);
+          //printf("srl    $%s(%08x), $%s(%08x), 0x%02x", register_names[rd], cpu.reg[rd], register_names[rt], cpu.reg[rt], imm5);
+          cpu_set_reg(rd, cpu.reg[rt] >> imm5);
           break;
         case 0x03:
-          //printf("sra    $%s(%08x), $%s(%08x), 0x%02x", register_names[rd], reg[rd], register_names[rt], reg[rt], imm5);
-          set_reg(rd, (int32_t)reg[rt] >> imm5);
+          //printf("sra    $%s(%08x), $%s(%08x), 0x%02x", register_names[rd], cpu.reg[rd], register_names[rt], cpu.reg[rt], imm5);
+          cpu_set_reg(rd, (int32_t)cpu.reg[rt] >> imm5);
           break;
         case 0x04:
           //printf("sllv   ");
-          set_reg(rd, reg[rt] << (reg[rs] & 0x1F));
+          cpu_set_reg(rd, cpu.reg[rt] << (cpu.reg[rs] & 0x1F));
           break;
         case 0x06:
           //printf("srlv   ");
-          set_reg(rd, reg[rt] >> (reg[rs] & 0x1F));
+          cpu_set_reg(rd, cpu.reg[rt] >> (cpu.reg[rs] & 0x1F));
           break;
         case 0x07:
           //printf("srav   ");
-          set_reg(rd, (int32_t)reg[rt] >> (reg[rs] & 0x1F));
+          cpu_set_reg(rd, (int32_t)cpu.reg[rt] >> (cpu.reg[rs] & 0x1F));
           break;
         case 0x08:
-          //printf("jr     $%s(%08x)", register_names[rs], reg[rs]);
-          next_pc = reg[rs];
+          //printf("jr     $%s(%08x)", register_names[rs], cpu.reg[rs]);
+          cpu.next_pc = cpu.reg[rs];
           break;
         case 0x09:
-          //printf("jalr   $%s(%08x), $%s(%08x)", register_names[rs], reg[rs], register_names[rd], reg[rd]);
-          set_reg(rd, pc + 4);
-          next_pc = reg[rs];
+          //printf("jalr   $%s(%08x), $%s(%08x)", register_names[rs], cpu.reg[rs], register_names[rd], cpu.reg[rd]);
+          cpu_set_reg(rd, cpu.pc + 4);
+          cpu.next_pc = cpu.reg[rs];
           break;
         case 0x0c:
           //printf("syscall");
           cpu_exception(8);
           break;
         case 0x10:
-          //printf("mfhi   $%s(%08x), $hi(%08x)", register_names[rd], reg[rd], hi);
-          set_reg(rd, hi);
+          //printf("mfhi   $%s(%08x), $hi(%08x)", register_names[rd], cpu.reg[rd], hi);
+          cpu_set_reg(rd, cpu.hi);
           break;
         case 0x11:
-          //printf("mthi   $hi(%08x), $%s(%08x)", hi, register_names[rs], reg[rs]);
-          hi = reg[rs];
+          //printf("mthi   $hi(%08x), $%s(%08x)", hi, register_names[rs], cpu.reg[rs]);
+          cpu.hi = cpu.reg[rs];
           break;
         case 0x12:
-          //printf("mflo   $%s(%08x), $lo(%08x)", register_names[rd], reg[rd], lo);
-          set_reg(rd, lo);
+          //printf("mflo   $%s(%08x), $lo(%08x)", register_names[rd], cpu.reg[rd], lo);
+          cpu_set_reg(rd, cpu.lo);
           break;
         case 0x13:
-          //printf("mtlo   $lo(%08x), $%s(%08x)", lo, register_names[rs], reg[rs]);
-          lo = reg[rs];
+          //printf("mtlo   $lo(%08x), $%s(%08x)", lo, register_names[rs], cpu.reg[rs]);
+          cpu.lo = cpu.reg[rs];
           break;
         case 0x1a:
-          //printf("div    $%s(%08x), $%s(%08x)", register_names[rs], reg[rs], register_names[rt], reg[rt]);
-          if(reg[rt]) {
-            lo = (int32_t)reg[rs] / (int32_t)reg[rt];
-            hi = (int32_t)reg[rs] % (int32_t)reg[rt];
+          //printf("div    $%s(%08x), $%s(%08x)", register_names[rs], cpu.reg[rs], register_names[rt], cpu.reg[rt]);
+          if(cpu.reg[rt]) {
+            cpu.lo = (int32_t)cpu.reg[rs] / (int32_t)cpu.reg[rt];
+            cpu.hi = (int32_t)cpu.reg[rs] % (int32_t)cpu.reg[rt];
           } else {
             // Divide by zero
-            hi = reg[rs];
-            if((int32_t)rs >= 0) lo = -1; else lo = 1;
+            cpu.hi = cpu.reg[rs];
+            if((int32_t)rs >= 0)
+              cpu.lo = -1;
+            else
+              cpu.lo = 1;
           }
           break;
         case 0x19:;
           //printf("multu");
-          uint64_t result = (uint64_t)reg[rs] * (uint64_t)reg[rt];
-          hi = result >> 32;
-          lo = result;
+          uint64_t result = (uint64_t)cpu.reg[rs] * (uint64_t)cpu.reg[rt];
+          cpu.hi = result >> 32;
+          cpu.lo = result;
           break;
         case 0x1b:
           //printf("divu   ");
-          if(reg[rt]) {
-            lo = reg[rs] / reg[rt];
-            hi = reg[rs] % reg[rt];
+          if(cpu.reg[rt]) {
+            cpu.lo = cpu.reg[rs] / cpu.reg[rt];
+            cpu.hi = cpu.reg[rs] % cpu.reg[rt];
           } else {
             // Divide by zero
-            hi = reg[rs];
-            lo = -1;
+            cpu.hi = cpu.reg[rs];
+            cpu.lo = -1;
           }
           break;
         case 0x20:
-          //printf("add    $%s(%08x), $%s(%08x), $%s(%08x)", register_names[rd], reg[rd], register_names[rs], reg[rs], register_names[rt], reg[rt]);
-          if ((int32_t)reg[rs] >= 0) {
-              if ((int32_t)reg[rt] > (INT32_MAX - (int32_t)reg[rs])) {
+          //printf("add    $%s(%08x), $%s(%08x), $%s(%08x)", register_names[rd], cpu.reg[rd], register_names[rs], cpu.reg[rs], register_names[rt], cpu.reg[rt]);
+          if ((int32_t)cpu.reg[rs] >= 0) {
+              if ((int32_t)cpu.reg[rt] > (INT32_MAX - (int32_t)cpu.reg[rs])) {
                   //printf("  OVERFLOW!");
                   cpu_exception(0xC);
                   break;
               }
           } else {
-              if ((int32_t)reg[rt] < (INT32_MIN - (int32_t)reg[rs])) {
+              if ((int32_t)cpu.reg[rt] < (INT32_MIN - (int32_t)cpu.reg[rs])) {
                   //printf("  OVERFLOW!");
                   cpu_exception(0xC);
                   break;
               }
           }
-          set_reg(rd, (int32_t)reg[rs] + (int32_t)reg[rt]);
+          cpu_set_reg(rd, (int32_t)cpu.reg[rs] + (int32_t)cpu.reg[rt]);
           break;
         case 0x21:
-          //printf("addu   $%s(%08x), $%s(%08x), $%s(%08x)", register_names[rd], reg[rd], register_names[rs], reg[rs], register_names[rt], reg[rt]);
-          set_reg(rd, reg[rs] + reg[rt]);
+          //printf("addu   $%s(%08x), $%s(%08x), $%s(%08x)", register_names[rd], cpu.reg[rd], register_names[rs], cpu.reg[rs], register_names[rt], cpu.reg[rt]);
+          cpu_set_reg(rd, cpu.reg[rs] + cpu.reg[rt]);
           break;
         case 0x23:
-          //printf("subu   $%s(%08x), $%s(%08x), $%s(%08x)", register_names[rd], reg[rd], register_names[rs], reg[rs], register_names[rt], reg[rt]);
-          set_reg(rd, reg[rs] - reg[rt]);
+          //printf("subu   $%s(%08x), $%s(%08x), $%s(%08x)", register_names[rd], cpu.reg[rd], register_names[rs], cpu.reg[rs], register_names[rt], cpu.reg[rt]);
+          cpu_set_reg(rd, cpu.reg[rs] - cpu.reg[rt]);
           break;
         case 0x24:
-          //printf("and    $%s(%08x), $%s(%08x), $%s(%08x)", register_names[rd], reg[rd], register_names[rs], reg[rs], register_names[rt], reg[rt]);
-          set_reg(rd, reg[rs] & reg[rt]);
+          //printf("and    $%s(%08x), $%s(%08x), $%s(%08x)", register_names[rd], cpu.reg[rd], register_names[rs], cpu.reg[rs], register_names[rt], cpu.reg[rt]);
+          cpu_set_reg(rd, cpu.reg[rs] & cpu.reg[rt]);
           break;
         case 0x25:
-          //printf("or     $%s(%08x), $%s(%08x), $%s(%08x)", register_names[rd], reg[rd], register_names[rs], reg[rs], register_names[rt], reg[rt]);
-          set_reg(rd, reg[rs] | reg[rt]);
+          //printf("or     $%s(%08x), $%s(%08x), $%s(%08x)", register_names[rd], cpu.reg[rd], register_names[rs], cpu.reg[rs], register_names[rt], cpu.reg[rt]);
+          cpu_set_reg(rd, cpu.reg[rs] | cpu.reg[rt]);
           break;
         case 0x26:
-          //printf("xor    $%s(%08x), $%s(%08x), $%s(%08x)", register_names[rd], reg[rd], register_names[rs], reg[rs], register_names[rt], reg[rt]);
-          set_reg(rd, reg[rs] ^ reg[rt]);
+          //printf("xor    $%s(%08x), $%s(%08x), $%s(%08x)", register_names[rd], cpu.reg[rd], register_names[rs], cpu.reg[rs], register_names[rt], cpu.reg[rt]);
+          cpu_set_reg(rd, cpu.reg[rs] ^ cpu.reg[rt]);
           break;
         case 0x27:
-          //printf("nor    $%s(%08x), $%s(%08x), $%s(%08x)", register_names[rd], reg[rd], register_names[rs], reg[rs], register_names[rt], reg[rt]);
-          set_reg(rd, ~(reg[rs] | reg[rt]));
+          //printf("nor    $%s(%08x), $%s(%08x), $%s(%08x)", register_names[rd], cpu.reg[rd], register_names[rs], cpu.reg[rs], register_names[rt], cpu.reg[rt]);
+          cpu_set_reg(rd, ~(cpu.reg[rs] | cpu.reg[rt]));
           break;
         case 0x2A:
-          //printf("slt    $%s(%08x), $%s(%08x), $%s(%08x)", register_names[rd], reg[rd], register_names[rs], reg[rs], register_names[rt], reg[rt]);
-          set_reg(rd, (int32_t)reg[rs] < (int32_t)reg[rt]);
+          //printf("slt    $%s(%08x), $%s(%08x), $%s(%08x)", register_names[rd], cpu.reg[rd], register_names[rs], cpu.reg[rs], register_names[rt], cpu.reg[rt]);
+          cpu_set_reg(rd, (int32_t)cpu.reg[rs] < (int32_t)cpu.reg[rt]);
           break;
         case 0x2B:
-          //printf("sltu   $%s(%08x), $%s(%08x), $%s(%08x)", register_names[rd], reg[rd], register_names[rs], reg[rs], register_names[rt], reg[rt]);
-          set_reg(rd, reg[rs] < reg[rt]);
+          //printf("sltu   $%s(%08x), $%s(%08x), $%s(%08x)", register_names[rd], cpu.reg[rd], register_names[rs], cpu.reg[rs], register_names[rt], cpu.reg[rt]);
+          cpu_set_reg(rd, cpu.reg[rs] < cpu.reg[rt]);
           break;
         default:
           printf("Unknown operation 0x%08X OP:0x%02X/0x%02X RS:0x%02X RT:0x%02X RD:0x%02X\n", instruction, operation, operation_b, rs, rt, rd);
@@ -218,91 +217,91 @@ void decode_and_execute(uint32_t instruction) {
     case 0x01:;
       int bgez_instruction = (instruction >> 16) & 1;
       if(bgez_instruction) {
-        //printf("bgez   $%s(%08x), 0x%08x", register_names[rs], reg[rs], pc + (int16_t)imm * 4);
+        //printf("bgez   $%s(%08x), 0x%08x", register_names[rs], cpu.reg[rs], pc + (int16_t)imm * 4);
       } else {
-        //printf("bltz   $%s(%08x), 0x%08x", register_names[rs], reg[rs], pc + (int16_t)imm * 4);
+        //printf("bltz   $%s(%08x), 0x%08x", register_names[rs], cpu.reg[rs], pc + (int16_t)imm * 4);
       }
       int link_instruction = ((instruction >> 17) & 0xf) == 8;
-      int result = (int32_t)reg[rs] < 0;
+      int result = (int32_t)cpu.reg[rs] < 0;
       result ^= bgez_instruction;
-      if(link_instruction) set_reg(31, pc + 4);
-      if(result) next_pc = pc + (int16_t)imm * 4;
+      if(link_instruction) cpu_set_reg(31, cpu.pc + 4);
+      if(result) cpu.next_pc = cpu.pc + (int16_t)imm * 4;
       break;
     case 0x02:
       //printf("j      0x%08x", (pc & 0xF0000000) | ( imm26 << 2));
-      next_pc = (pc & 0xF0000000) | ( imm26 << 2);
+      cpu.next_pc = (cpu.pc & 0xF0000000) | ( imm26 << 2);
       break;
     case 0x03:
       //printf("jal    0x%08x", (pc & 0xF0000000) | ( imm26 << 2));
-      set_reg(31, pc + 4);
-      next_pc = (pc & 0xF0000000) | ( imm26 << 2);
+      cpu_set_reg(31, cpu.pc + 4);
+      cpu.next_pc = (cpu.pc & 0xF0000000) | ( imm26 << 2);
       break;
     case 0x04:
-      //printf("beq    $%s(%08x), $%s(%08x), 0x%08x", register_names[rs], reg[rs], register_names[rt], reg[rt], pc + (int16_t)imm * 4);
-      if(reg[rs] == reg[rt]) next_pc = pc + (int16_t)imm * 4;
+      //printf("beq    $%s(%08x), $%s(%08x), 0x%08x", register_names[rs], cpu.reg[rs], register_names[rt], cpu.reg[rt], pc + (int16_t)imm * 4);
+      if(cpu.reg[rs] == cpu.reg[rt]) cpu.next_pc = cpu.pc + (int16_t)imm * 4;
       break;
     case 0x05:
-      //printf("bne    $%s(%08x), $%s(%08x), 0x%08x", register_names[rs], reg[rs], register_names[rt], reg[rt], pc + (int16_t)imm * 4);
-      if(reg[rs] != reg[rt]) next_pc = pc + (int16_t)imm * 4;
+      //printf("bne    $%s(%08x), $%s(%08x), 0x%08x", register_names[rs], cpu.reg[rs], register_names[rt], cpu.reg[rt], pc + (int16_t)imm * 4);
+      if(cpu.reg[rs] != cpu.reg[rt]) cpu.next_pc = cpu.pc + (int16_t)imm * 4;
       break;
     case 0x06:
-      //printf("blez   $%s(%08x), 0x%08x", register_names[rs], reg[rs], pc + (int16_t)imm * 4);
-      if((int32_t)reg[rs] <= 0) next_pc = pc + (int16_t)imm * 4;
+      //printf("blez   $%s(%08x), 0x%08x", register_names[rs], cpu.reg[rs], pc + (int16_t)imm * 4);
+      if((int32_t)cpu.reg[rs] <= 0) cpu.next_pc = cpu.pc + (int16_t)imm * 4;
       break;
     case 0x07:
-      //printf("bgtz   $%s(%08x), 0x%08x", register_names[rs], reg[rs], pc + (int16_t)imm * 4);
-      if((int32_t)reg[rs] > 0) next_pc = pc + (int16_t)imm * 4;
+      //printf("bgtz   $%s(%08x), 0x%08x", register_names[rs], cpu.reg[rs], pc + (int16_t)imm * 4);
+      if((int32_t)cpu.reg[rs] > 0) cpu.next_pc = cpu.pc + (int16_t)imm * 4;
       break;
     case 0x08:
-      //printf("addi   $%s(%08x), $%s(%08x), 0x%04x", register_names[rt], reg[rt], register_names[rs], reg[rs], imm);
-      if ((int32_t)reg[rs] >= 0) {
-          if ((int16_t)imm > (INT32_MAX - (int32_t)reg[rs])) {
+      //printf("addi   $%s(%08x), $%s(%08x), 0x%04x", register_names[rt], cpu.reg[rt], register_names[rs], cpu.reg[rs], imm);
+      if ((int32_t)cpu.reg[rs] >= 0) {
+          if ((int16_t)imm > (INT32_MAX - (int32_t)cpu.reg[rs])) {
             //printf("  OVERFLOW!");
             cpu_exception(0xC);
             break;
           }
       } else {
-          if ((int16_t)imm < (INT32_MIN - (int32_t)reg[rs])) {
+          if ((int16_t)imm < (INT32_MIN - (int32_t)cpu.reg[rs])) {
             //printf("  OVERFLOW!");
             cpu_exception(0xC);
             break;
           }
       }
-      set_reg(rt, (int32_t)reg[rs] + (int16_t)imm);
+      cpu_set_reg(rt, (int32_t)cpu.reg[rs] + (int16_t)imm);
       break;
     case 0x09:
-      //printf("addiu  $%s(%08x), $%s(%08x), 0x%04x", register_names[rt], reg[rt], register_names[rs], reg[rs], imm);
-      set_reg(rt, (int32_t)reg[rs] + (int16_t)imm);
+      //printf("addiu  $%s(%08x), $%s(%08x), 0x%04x", register_names[rt], cpu.reg[rt], register_names[rs], cpu.reg[rs], imm);
+      cpu_set_reg(rt, (int32_t)cpu.reg[rs] + (int16_t)imm);
       break;
     case 0x0A:
-      //printf("slti   $%s(%08x), $%s(%08x), 0x%04x", register_names[rt], reg[rt], register_names[rs], reg[rs], imm);
-      set_reg(rt, (int32_t)reg[rs] < (int16_t)imm);
+      //printf("slti   $%s(%08x), $%s(%08x), 0x%04x", register_names[rt], cpu.reg[rt], register_names[rs], cpu.reg[rs], imm);
+      cpu_set_reg(rt, (int32_t)cpu.reg[rs] < (int16_t)imm);
       break;
     case 0x0B:
-      //printf("sltiu  $%s(%08x), $%s(%08x), 0x%04x", register_names[rt], reg[rt], register_names[rs], reg[rs], imm);
-      set_reg(rt, reg[rs] < (int16_t)imm);
+      //printf("sltiu  $%s(%08x), $%s(%08x), 0x%04x", register_names[rt], cpu.reg[rt], register_names[rs], cpu.reg[rs], imm);
+      cpu_set_reg(rt, cpu.reg[rs] < (int16_t)imm);
       break;
     case 0x0C:
-      //printf("andi   $%s(%08x), $%s(%08x), 0x%04x", register_names[rt], reg[rt], register_names[rs], reg[rs], imm);
-      set_reg(rt, reg[rs] & imm);
+      //printf("andi   $%s(%08x), $%s(%08x), 0x%04x", register_names[rt], cpu.reg[rt], register_names[rs], cpu.reg[rs], imm);
+      cpu_set_reg(rt, cpu.reg[rs] & imm);
       break;
     case 0x0D:
-      //printf("ori    $%s(%08x), $%s(%08x), 0x%04x", register_names[rt], reg[rt], register_names[rs], reg[rs], imm);
-      set_reg(rt, reg[rs] | imm);
+      //printf("ori    $%s(%08x), $%s(%08x), 0x%04x", register_names[rt], cpu.reg[rt], register_names[rs], cpu.reg[rs], imm);
+      cpu_set_reg(rt, cpu.reg[rs] | imm);
       break;
     case 0x0F:
-      //printf("lui    $%s(%08x), 0x%04x", register_names[rt], reg[rt], imm);
-      set_reg(rt, imm << 16);
+      //printf("lui    $%s(%08x), 0x%04x", register_names[rt], cpu.reg[rt], imm);
+      cpu_set_reg(rt, imm << 16);
       break;
     case 0x10:
       switch(rs) {
         case 0x00:
-          //printf("mfc0   $%s(%08x), $%s(%08x)", register_names[rt], reg[rt], cop_register_names[rd], cpu_cop_registers.reg[rd]);
-          set_reg(rt, cpu_cop_registers.reg[rd]);
+          //printf("mfc0   $%s(%08x), $%s(%08x)", register_names[rt], cpu.reg[rt], cop_register_names[rd], cpu.cop0.cpu.reg[rd]);
+          cpu_set_reg(rt, cpu.cop0.reg[rd]);
           break;
         case 0x04:
-          //printf("mtc0   $%s(%08x), $%s(%08x)", cop_register_names[rd], cpu_cop_registers.reg[rd], register_names[rt], reg[rt]);
-          cpu_cop_registers.reg[rd] = reg[rt];
+          //printf("mtc0   $%s(%08x), $%s(%08x)", cop_register_names[rd], cpu.cop0.cpu.reg[rd], register_names[rt], cpu.reg[rt]);
+          cpu.cop0.reg[rd] = cpu.reg[rt];
           break;
         case 0x10:;
           //printf("rfe    ");
@@ -310,9 +309,9 @@ void decode_and_execute(uint32_t instruction) {
             printf("Unknown coprocessor operation 0x%08X RS:0x%02X &0x3F:%02X\n", instruction, rs, operation_b);
             exit(1);
           }
-          uint32_t mode = cpu_cop_registers.sr & 0x3F;
-          cpu_cop_registers.sr &= ~0x3F;
-          cpu_cop_registers.sr |= (mode >> 2);
+          uint32_t mode = cpu.cop0.sr & 0x3F;
+          cpu.cop0.sr &= ~0x3F;
+          cpu.cop0.sr |= (mode >> 2);
           break;
         default:
           printf("Unknown operation 0x%08X OP:0x%02X RS:0x%02X RT:0x%02X RD:0x%02X\n", instruction, operation, rs, rt, rd);
@@ -320,44 +319,44 @@ void decode_and_execute(uint32_t instruction) {
       }
       break;
     case 0x20:
-      location = reg[rs] + (int16_t)imm;
-      //printf("lb     $%s(%08x), %i(%s)([%08x] = %02x)", register_names[rt], reg[rt], (int16_t)imm, register_names[rs], location, (int8_t)memory_load_8(location));
-      set_reg(rt, (int8_t)memory_load_8(location));
+      location = cpu.reg[rs] + (int16_t)imm;
+      //printf("lb     $%s(%08x), %i(%s)([%08x] = %02x)", register_names[rt], cpu.reg[rt], (int16_t)imm, register_names[rs], location, (int8_t)memory_load_8(location));
+      cpu_set_reg(rt, (int8_t)memory_load_8(location));
       break;
     case 0x21:
-      location = reg[rs] + (int16_t)imm;
-      //printf("lh     $%s(%08x), %i(%s)([%08x] = %04x)", register_names[rt], reg[rt], (int16_t)imm, register_names[rs], location, (int16_t)memory_load_16(location));
-      set_reg(rt, (int16_t)memory_load_16(location));
+      location = cpu.reg[rs] + (int16_t)imm;
+      //printf("lh     $%s(%08x), %i(%s)([%08x] = %04x)", register_names[rt], cpu.reg[rt], (int16_t)imm, register_names[rs], location, (int16_t)memory_load_16(location));
+      cpu_set_reg(rt, (int16_t)memory_load_16(location));
       break;
     case 0x23:;
-      location = reg[rs] + (int16_t)imm;
-      //printf("lw     $%s(%08x), %i(%s)([%08x] = %08x)", register_names[rt], reg[rt], (int16_t)imm, register_names[rs], location, memory_load_32(location));
-      set_reg(rt, memory_load_32(location));
+      location = cpu.reg[rs] + (int16_t)imm;
+      //printf("lw     $%s(%08x), %i(%s)([%08x] = %08x)", register_names[rt], cpu.reg[rt], (int16_t)imm, register_names[rs], location, memory_load_32(location));
+      cpu_set_reg(rt, memory_load_32(location));
       break;
     case 0x24:
-      location = reg[rs] + (int16_t)imm;
-      //printf("lbu    $%s(%08x), %i(%s)([%08x] = %02x)", register_names[rt], reg[rt], (int16_t)imm, register_names[rs], location, memory_load_8(location));
-      set_reg(rt, memory_load_8(location));
+      location = cpu.reg[rs] + (int16_t)imm;
+      //printf("lbu    $%s(%08x), %i(%s)([%08x] = %02x)", register_names[rt], cpu.reg[rt], (int16_t)imm, register_names[rs], location, memory_load_8(location));
+      cpu_set_reg(rt, memory_load_8(location));
       break;
     case 0x25:
-      location = reg[rs] + (int16_t)imm;
-      //printf("lhu    $%s(%08x), %i(%s)([%08x] = %04x)", register_names[rt], reg[rt], (int16_t)imm, register_names[rs], location, memory_load_16(location));
-      set_reg(rt, (uint16_t)memory_load_16(location));
+      location = cpu.reg[rs] + (int16_t)imm;
+      //printf("lhu    $%s(%08x), %i(%s)([%08x] = %04x)", register_names[rt], cpu.reg[rt], (int16_t)imm, register_names[rs], location, memory_load_16(location));
+      cpu_set_reg(rt, (uint16_t)memory_load_16(location));
       break;
     case 0x28:
-      location = reg[rs] + (int16_t)imm;
-      //printf("sb     $%s(%08x), %i(%s)([%08x] = %02x)", register_names[rt], reg[rt], (int16_t)imm, register_names[rs], location, memory_load_8(location));
-      memory_store_8(location, (uint8_t)reg[rt]);
+      location = cpu.reg[rs] + (int16_t)imm;
+      //printf("sb     $%s(%08x), %i(%s)([%08x] = %02x)", register_names[rt], cpu.reg[rt], (int16_t)imm, register_names[rs], location, memory_load_8(location));
+      memory_store_8(location, (uint8_t)cpu.reg[rt]);
       break;
     case 0x29:
-      location = reg[rs] + (int16_t)imm;
-      //printf("sh     $%s(%08x), %i(%s)([%08x] = %04x)", register_names[rt], reg[rt], (int16_t)imm, register_names[rs], location, memory_load_16(location));
-      memory_store_16(location, (uint16_t)reg[rt]);
+      location = cpu.reg[rs] + (int16_t)imm;
+      //printf("sh     $%s(%08x), %i(%s)([%08x] = %04x)", register_names[rt], cpu.reg[rt], (int16_t)imm, register_names[rs], location, memory_load_16(location));
+      memory_store_16(location, (uint16_t)cpu.reg[rt]);
       break;
     case 0x2B:;
-      location = reg[rs] + (int16_t)imm;
-      //printf("sw     $%s(%08x), %i(%s)([%08x] = %08x)", register_names[rt], reg[rt], (int16_t)imm, register_names[rs], location, memory_load_32(location));
-      memory_store_32(location, reg[rt]);
+      location = cpu.reg[rs] + (int16_t)imm;
+      //printf("sw     $%s(%08x), %i(%s)([%08x] = %08x)", register_names[rt], cpu.reg[rt], (int16_t)imm, register_names[rs], location, memory_load_32(location));
+      memory_store_32(location, cpu.reg[rt]);
       break;
     default:
       printf("Unknown operation 0x%08X OP:0x%02X RS:0x%02X RT:0x%02X RD:0x%02X IMM:0x%04X\n", instruction, operation, rs, rt, rd, imm);
@@ -367,17 +366,17 @@ void decode_and_execute(uint32_t instruction) {
 }
 
 void cpu_reset() {
-  pc = 0xbfc00000;
-  next_pc = pc + 4;
-  sr = 0;
-  reg[0] = 0;
+  cpu.pc = 0xbfc00000;
+  cpu.next_pc = cpu.pc + 4;
+  cpu.sr = 0;
+  cpu.reg[0] = 0;
 }
 
 uint32_t fetch_next_instruction() {
-  uint32_t instruction = memory_load_32(pc);
-  current_pc = pc;
-  pc = next_pc;
-  next_pc = pc + 4;
+  uint32_t instruction = memory_load_32(cpu.pc);
+  cpu.current_pc = cpu.pc;
+  cpu.pc = cpu.next_pc;
+  cpu.next_pc = cpu.pc + 4;
   return instruction;
 }
 

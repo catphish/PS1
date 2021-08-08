@@ -1,5 +1,13 @@
 #include <stdint.h>
 
+typedef struct {
+  uint8_t ram[1024*2048];
+  uint8_t rom[1024*512];
+  uint32_t dummy;
+} memory_t;
+
+extern memory_t memory;
+
 void memory_load_bios();
 
 uint32_t memory_load_32(uint32_t address);
