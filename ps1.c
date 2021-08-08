@@ -90,7 +90,6 @@ uint32_t load_32(uint32_t address) {
       return *(uint32_t*)(rom + (address & 0x7FFFF));
     case 0x1f801070 ... 0x1f801077:; // Interrupt control
     case 0x1f801080 ... 0x1f8010FF:; // DMA control
-    case 0x1F801814:; //GPU
       return(0);
     default:
       printf("  Attempt to read invalid memory location 0x%08X\n", address);
@@ -167,7 +166,7 @@ void store_32(uint32_t address, uint32_t value) {
     case 0xFFFE0130:; // Cache management
     case 0x1f801070 ... 0x1f801077:; // Interrupt control
     case 0x1f801080 ... 0x1f8010FF:; // DMA control
-    case 0x1F801810:; //GPU
+    case 0x1f801100 ... 0x1f801129:; // Timer control
       break;
     default:
       printf("  Attempt to write to invalid memory location 0x%08X\n", address);
@@ -211,6 +210,7 @@ void store_8(uint32_t address, uint8_t value) {
       break;
     case 0x1f802000 ... 0x1F802041:; // Expansion 2
     case 0x1f801070 ... 0x1f801077:; // Interrupt control
+    case 0x1f801100 ... 0x1f801129:; // Timer control
       break;
     default:
       printf("  Attempt to write to invalid memory location 0x%08X\n", address);
@@ -296,6 +296,7 @@ void decode_and_execute(uint32_t instruction) {
             hi = reg[rs];
             if((int32_t)rs >= 0) lo = -1; else lo = 1;
           }
+          break;
         case 0x1b:
           //printf("DIVU: Dividing R%u(%u) by R%u(%u) and storing value in HI/LO\n", rs, reg[rs], rt, reg[rt]);
           if(reg[rt]) {
@@ -306,6 +307,7 @@ void decode_and_execute(uint32_t instruction) {
             hi = reg[rs];
             lo = -1;
           }
+          break;
         case 0x20:
           //printf("ADD: Adding R%u(0x%08X) to R%u(0x%08X) and storing into R%u\n", rs, reg[rs], rt, reg[rt], rd);
           if ((int32_t)reg[rs] >= 0) {
@@ -352,8 +354,8 @@ void decode_and_execute(uint32_t instruction) {
           set_reg(rd, reg[rs] < reg[rt]);
           break;
         default:
-        printf("Unknown operation 0x%08X OP:0x%02X/0x%02X RS:0x%02X RT:0x%02X RD:0x%02X\n", instruction, operation, operation_b, rs, rt, rd);
-        exit(1);
+          printf("Unknown operation 0x%08X OP:0x%02X/0x%02X RS:0x%02X RT:0x%02X RD:0x%02X\n", instruction, operation, operation_b, rs, rt, rd);
+          exit(1);
       }
       break;
     case 0x01:;
