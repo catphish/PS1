@@ -68,6 +68,7 @@ void decode_and_execute(uint32_t instruction) {
   //printf("%08x: ", instruction);
 
   uint32_t location;
+  uint32_t aligned_word;
 
   switch(operation) {
     case 0x00:
@@ -328,6 +329,17 @@ void decode_and_execute(uint32_t instruction) {
       //printf("lh     $%s(%08x), %i(%s)([%08x] = %04x)", register_names[rt], cpu.reg[rt], (int16_t)imm, register_names[rs], location, (int16_t)memory_load_16(location));
       cpu_set_reg(rt, (int16_t)memory_load_16(location));
       break;
+    case 0x22:
+      //printf("lwl\n");
+      location = cpu.reg[rs] + (int16_t)imm;
+      aligned_word = memory_load_32(location & ~3);
+      switch(location & ~3) {
+        case 0: cpu.reg[rt] = (cpu.reg[rt] & 0x00ffffff) | (aligned_word << 24); break;
+        case 1: cpu.reg[rt] = (cpu.reg[rt] & 0x0000ffff) | (aligned_word << 16); break;
+        case 2: cpu.reg[rt] = (cpu.reg[rt] & 0x000000ff) | (aligned_word << 8); break;
+        case 3: cpu.reg[rt] = (cpu.reg[rt] & 0x00000000) | (aligned_word << 0); break;
+      }
+      break;
     case 0x23:;
       location = cpu.reg[rs] + (int16_t)imm;
       //printf("lw     $%s(%08x), %i(%s)([%08x] = %08x)", register_names[rt], cpu.reg[rt], (int16_t)imm, register_names[rs], location, memory_load_32(location));
@@ -343,6 +355,17 @@ void decode_and_execute(uint32_t instruction) {
       //printf("lhu    $%s(%08x), %i(%s)([%08x] = %04x)", register_names[rt], cpu.reg[rt], (int16_t)imm, register_names[rs], location, memory_load_16(location));
       cpu_set_reg(rt, (uint16_t)memory_load_16(location));
       break;
+    case 0x26:
+      //printf("lwr\n");
+      location = cpu.reg[rs] + (int16_t)imm;
+      aligned_word = memory_load_32(location & ~3);
+      switch(location & ~3) {
+        case 0: cpu.reg[rt] = (cpu.reg[rt] & 0x00000000) | (aligned_word >> 0); break;
+        case 1: cpu.reg[rt] = (cpu.reg[rt] & 0xff000000) | (aligned_word >> 8); break;
+        case 2: cpu.reg[rt] = (cpu.reg[rt] & 0xffff0000) | (aligned_word >> 16); break;
+        case 3: cpu.reg[rt] = (cpu.reg[rt] & 0xffffff00) | (aligned_word >> 24); break;
+      }
+      break;
     case 0x28:
       location = cpu.reg[rs] + (int16_t)imm;
       //printf("sb     $%s(%08x), %i(%s)([%08x] = %02x)", register_names[rt], cpu.reg[rt], (int16_t)imm, register_names[rs], location, memory_load_8(location));
@@ -353,10 +376,34 @@ void decode_and_execute(uint32_t instruction) {
       //printf("sh     $%s(%08x), %i(%s)([%08x] = %04x)", register_names[rt], cpu.reg[rt], (int16_t)imm, register_names[rs], location, memory_load_16(location));
       memory_store_16(location, (uint16_t)cpu.reg[rt]);
       break;
+    case 0x2a:
+      location = cpu.reg[rs] + (int16_t)imm;
+      //printf("swl");
+      aligned_word = memory_load_32(location & ~3);
+      switch(location & ~3) {
+        case 0: aligned_word = (aligned_word & 0xffffff00) | (cpu.reg[rt] >> 24); break;
+        case 1: aligned_word = (aligned_word & 0xffff0000) | (cpu.reg[rt] >> 16); break;
+        case 2: aligned_word = (aligned_word & 0xff000000) | (cpu.reg[rt] >> 8); break;
+        case 3: aligned_word = (aligned_word & 0x00000000) | (cpu.reg[rt] >> 0); break;
+      }
+      memory_store_32(location & ~3, aligned_word);
+      break;
     case 0x2B:;
       location = cpu.reg[rs] + (int16_t)imm;
       //printf("sw     $%s(%08x), %i(%s)([%08x] = %08x)", register_names[rt], cpu.reg[rt], (int16_t)imm, register_names[rs], location, memory_load_32(location));
       memory_store_32(location, cpu.reg[rt]);
+      break;
+    case 0x2e:
+      location = cpu.reg[rs] + (int16_t)imm;
+      //printf("swr");
+      aligned_word = memory_load_32(location & ~3);
+      switch(location & ~3) {
+        case 0: aligned_word = (aligned_word & 0x00000000) | (cpu.reg[rt] << 0); break;
+        case 1: aligned_word = (aligned_word & 0x000000ff) | (cpu.reg[rt] << 8); break;
+        case 2: aligned_word = (aligned_word & 0x0000ffff) | (cpu.reg[rt] << 16); break;
+        case 3: aligned_word = (aligned_word & 0x00ffffff) | (cpu.reg[rt] << 24); break;
+      }
+      memory_store_32(location & ~3, aligned_word);
       break;
     default:
       printf("Unknown operation 0x%08X OP:0x%02X RS:0x%02X RT:0x%02X RD:0x%02X IMM:0x%04X\n", instruction, operation, rs, rt, rd, imm);
