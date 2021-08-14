@@ -78,23 +78,23 @@ void memory_store_8(uint32_t address, uint8_t value) {
 }
 
 uint32_t memory_dummy_load_32(uint32_t address) {
-  printf("Ignoring 32-bit read from 0x%08x\n", address);
+  //printf("Ignoring 32-bit read from 0x%08x\n", address);
   return(0);
 }
 uint16_t memory_dummy_load_16(uint32_t address) {
-  printf("Ignoring 16-bit read from 0x%08x\n", address);
+  //printf("Ignoring 16-bit read from 0x%08x\n", address);
   return(0);
 }
 uint8_t memory_dummy_load_8(uint32_t address) {
-  printf("Ignoring 8-bit read from 0x%08x\n", address);
+  //printf("Ignoring 8-bit read from 0x%08x\n", address);
   return(0);
 }
 void memory_dummy_store_32(uint32_t address, uint32_t value) {
-  printf("Ignoring 32-bit write to 0x%08x\n", address);
+  //printf("Ignoring 32-bit write to 0x%08x\n", address);
 }
 void memory_dummy_store_16(uint32_t address, uint16_t value) {
-  printf("Ignoring 16-bit write to 0x%08x\n", address);
+  //printf("Ignoring 16-bit write to 0x%08x\n", address);
 }
 void memory_dummy_store_8(uint32_t address, uint8_t value) {
-  printf("Ignoring 8-bit write to 0x%08x\n", address);
+  //printf("Ignoring 8-bit write to 0x%08x\n", address);
 }
