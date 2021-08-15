@@ -52,10 +52,13 @@ void cpu_exception(uint32_t cause) {
 }
 
 void decode_and_execute(uint32_t instruction) {
+  if(instruction == 0) return;
+
   if(cpu.current_pc % 4) {
     cpu_exception(4);
     return;
   }
+
   uint8_t operation = instruction >> 26;
   uint8_t operation_b = instruction & 0x3F;
   uint8_t rs = (instruction >> 21) & 0x1F;
@@ -74,12 +77,8 @@ void decode_and_execute(uint32_t instruction) {
     case 0x00:
       switch(operation_b) {
         case 0x00:
-          if(instruction == 0) {
-            //printf("nop    ");
-          } else {
-            //printf("sll    $%s(%08x), $%s(%08x), 0x%02x", register_names[rd], cpu.reg[rd], register_names[rt], cpu.reg[rt], imm5);
-            cpu_set_reg(rd, cpu.reg[rt] << imm5);
-          }
+          //printf("sll    $%s(%08x), $%s(%08x), 0x%02x", register_names[rd], cpu.reg[rd], register_names[rt], cpu.reg[rt], imm5);
+          cpu_set_reg(rd, cpu.reg[rt] << imm5);
           break;
         case 0x02:
           //printf("srl    $%s(%08x), $%s(%08x), 0x%02x", register_names[rd], cpu.reg[rd], register_names[rt], cpu.reg[rt], imm5);

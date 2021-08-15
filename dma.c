@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include "dma.h"
 #include "memory.h"
+#include "gpu.h"
 
 extern uint8_t ram[];
 
@@ -119,7 +120,7 @@ void gpu_dma_transfer() {
       uint32_t packet_size = header >> 24;
       for(uint32_t n=0; n<packet_size*4; n+=4) {
         uint32_t command = *(uint32_t*)(ram + address + n + 4);
-        printf("GP0: %08x (DMA)\n", command);
+        gpu_gp0(command);
       }
       if(header & 0x800000)
         break;
@@ -133,7 +134,7 @@ void gpu_dma_transfer() {
     //printf("info: %08x %08x\n", words, address);
     while(address < end_address) {
       uint32_t command = *(uint32_t*)(ram + address);
-      printf("GP0: %08x (DMA)\n", command);
+      gpu_gp0(command);
       address += 4;
     }
   } else {
