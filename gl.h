@@ -1,20 +1,19 @@
 const char *vertexSource = "#version 130\n\
-in mediump vec3 point;\n\
-in mediump vec2 texcoord;\n\
-out mediump vec2 UV;\n\
+in mediump vec2 xy;\n\
+in mediump vec3 rgb;\n\
+out mediump vec3 vcolor;\n\
 void main()\n\
 {\n\
-  gl_Position = vec4(point, 1);\n\
-  UV = texcoord;\n\
+  gl_Position = vec4(2.0 * xy.x / 1024, 2.0 * xy.y / 1024, 0.0, 1.0);\n\
+  vcolor = vec3(1.0 * rgb.r / 255, 1.0 * rgb.g / 255, 1.0 * rgb.b / 255);\n\
 }";
 
 const char *fragmentSource = "#version 130\n\
-in mediump vec2 UV;\n\
+in mediump vec3 vcolor;\n\
 out mediump vec3 fragColor;\n\
-uniform sampler2D tex;\n\
 void main()\n\
 {\n\
-  fragColor = texture(tex, UV).rgb;\n\
+  fragColor = vcolor;\n\
 }";
 
 
@@ -42,16 +41,3 @@ void printLinkStatus(const char *step, GLuint context)
 {
   printStatus(step, context, GL_LINK_STATUS);
 }
-
-GLfloat vertices[] = {
-   0.5f,  0.5f,  0.0f, 1.0f, 1.0f,
-  -0.5f,  0.5f,  0.0f, 0.0f, 1.0f,
-  -0.5f, -0.5f,  0.0f, 0.0f, 0.0f
-};
-
-unsigned int indices[] = { 0, 1, 2 };
-
-float pixels[] = {
-  0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f,
-  1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f
-};

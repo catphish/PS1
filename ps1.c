@@ -18,6 +18,8 @@ GLuint idx;
 GLuint tex;
 GLuint program;
 
+uint16_t cycle_count;
+
 void gl_init() {
   GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
   glShaderSource(vertexShader, 1, &vertexSource, NULL);
@@ -40,14 +42,9 @@ void gl_init() {
 
   glGenBuffers(1, &vbo);
   glBindBuffer(GL_ARRAY_BUFFER, vbo);
-  glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
-  glGenBuffers(1, &idx);
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, idx);
-  glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
-
-  glVertexAttribPointer(glGetAttribLocation(program, "point"), 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *)0);
-  glVertexAttribPointer(glGetAttribLocation(program, "texcoord"), 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *)(3 * sizeof(float)));
+  glVertexAttribPointer(glGetAttribLocation(program, "rgb"), 3, GL_UNSIGNED_BYTE, GL_FALSE, 8, (void *)0);
+  glVertexAttribPointer(glGetAttribLocation(program, "xy"),  2, GL_UNSIGNED_SHORT, GL_FALSE, 8, (void *)4);
 
   glEnable(GL_DEPTH_TEST);
   
@@ -55,22 +52,13 @@ void gl_init() {
 
   glEnableVertexAttribArray(0);
   glEnableVertexAttribArray(1);
-
-  glGenTextures(1, &tex);
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, tex);
-  glUniform1i(glGetUniformLocation(program, "tex"), 0);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 2, 2, 0, GL_BGR, GL_FLOAT, pixels);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-  glGenerateMipmap(GL_TEXTURE_2D);
 }
 
+SDL_Window *Window;
 int main() {
   uint32_t running = 1;
   uint32_t WindowFlags = SDL_WINDOW_OPENGL;
-  SDL_Window *Window = SDL_CreateWindow("OpenGL Test", 0, 0, 1024, 768, WindowFlags);
+  Window = SDL_CreateWindow("OpenGL Test", 0, 0, 1024, 768, WindowFlags);
   SDL_GL_CreateContext(Window);
 
   glewExperimental = GL_TRUE;
@@ -81,18 +69,17 @@ int main() {
   cpu_reset();
   dma_reset();
   gpu_reset();
+  glUseProgram(program);
+  glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
   while(running) {
+    cycle_count++;
+    if(!cycle_count) {
+      SDL_Event Event;
+      while (SDL_PollEvent(&Event))
+        if (Event.type == SDL_QUIT) running = 0;
+    }
     cpu_fetch_execute();
-    SDL_Event Event;
-    while (SDL_PollEvent(&Event))
-      if (Event.type == SDL_QUIT) running = 0;
 
-  // glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-  // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-  // glUseProgram(program);
-  // glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_INT, (void *)0);
-
-  //   SDL_GL_SwapWindow(Window);
   }
   return(0);
 }

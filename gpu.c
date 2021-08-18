@@ -3,6 +3,16 @@
 #include <stdlib.h>
 #include "memory.h"
 
+#include <GL/glew.h>
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_opengl.h>
+
+uint32_t vertices[6] = {
+  0x000000ff, 0x00000000,
+  0x0000ff00, 0x000000ff,
+  0x00ff0000, 0x0000ffff
+};
+
 struct __attribute__((packed)) {
   union {
     struct {
@@ -117,8 +127,10 @@ uint32_t gp0_data_offset;
 uint8_t gp0_command;
 uint8_t gp0_offset;
 
+extern SDL_Window *Window;
+
 void gpu_gp0(uint32_t command) {
-  printf("GP0: Command %08x!\n", command);
+  //printf("GP0: Command %08x!\n", command);
   gp0_buffer[gp0_offset] = command;
   switch(gp0_buffer[0] & 0xff000000) {
     case 0x0: // Nop
@@ -127,37 +139,46 @@ void gpu_gp0(uint32_t command) {
       break;
     case 0x28000000:
       if(gp0_offset == 4) {
-        printf("draw command\n");
+        //printf("draw command\n");
         gp0_offset = 0;
       } else gp0_offset++;
       break;
     case 0x2c000000:
       if(gp0_offset == 8) {
-        printf("draw command\n");
+        //printf("draw command\n");
         gp0_offset = 0;
       } else gp0_offset++;
       break;
     case 0x30000000:
       if(gp0_offset == 5) {
-        printf("draw command\n");
+        //printf("draw command\n");
+        vertices[0] = gp0_buffer[0];
+        vertices[1] = gp0_buffer[1];
+        vertices[2] = gp0_buffer[2];
+        vertices[3] = gp0_buffer[3];
+        vertices[4] = gp0_buffer[4];
+        vertices[5] = gp0_buffer[5];
+        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+
         gp0_offset = 0;
       } else gp0_offset++;
       break;
     case 0x38000000:
       if(gp0_offset == 7) {
-        printf("draw command\n");
+        //printf("draw command\n");
         gp0_offset = 0;
       } else gp0_offset++;
       break;
     case 0xa0000000:
       if(gp0_offset == 2) {
-        printf("load data start\n");
+        //printf("load data start\n");
         gp0_offset++;
         gp0_data_offset = 0;
       } else if(gp0_offset == 3) {
         gp0_data_offset++;
         if(gp0_data_offset == ((gp0_buffer[2] >> 16) * (gp0_buffer[2] & 0xffff) + 1 ) / 2) {
-          printf("load data end\n");
+          //printf("load data end\n");
           gp0_offset = 0;
         }
       } else {
@@ -199,6 +220,8 @@ void gpu_gp0(uint32_t command) {
     case 0xe5000000:
       gpu.draw_offset_x    = (command >> 0)   & 0x7ff;
       gpu.draw_offset_y    = (command >> 11)  & 0x7ff;
+      SDL_GL_SwapWindow(Window);
+      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
       break;
     case 0xe6000000:
       gpu.set_mask_bit     = (command >> 0)   & 0x1;
