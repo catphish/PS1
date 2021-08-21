@@ -12,12 +12,13 @@ struct vertex {
   uint32_t color;
   uint32_t position;
   uint32_t uv;
-  uint32_t zpos;
+  uint16_t zpos;
+  uint16_t res;
 };
 struct vertex shaded_vertices[1024 * 1024];
 struct vertex textured_vertices[1024 * 1024];
 uint32_t shaded_vertices_count, textured_vertices_count;
-uint32_t zpos;
+uint16_t zpos;
 
 uint8_t vram[1024*1024];
 
@@ -140,7 +141,8 @@ GLuint textured_program;
 SDL_Window *Window;
 
 void gpu_init() {
-  memset(vram, 0xff, 1024*1024);
+  for(int n=0; n<1024*1024; n++)
+    vram[n] = rand();
   uint32_t WindowFlags = SDL_WINDOW_OPENGL;
   Window = SDL_CreateWindow("OpenGL Test", 0, 0, 1280, 960, WindowFlags);
   SDL_GL_CreateContext(Window);
@@ -182,19 +184,26 @@ void gpu_init() {
 
   glVertexAttribPointer(glGetAttribLocation(shaded_program, "color"), 3, GL_UNSIGNED_BYTE, GL_TRUE, 16, (void *)0);
   glVertexAttribPointer(glGetAttribLocation(shaded_program, "location"),  2, GL_UNSIGNED_SHORT, GL_FALSE, 16, (void *)4);
-  glVertexAttribPointer(glGetAttribLocation(shaded_program, "uv"),  2, GL_UNSIGNED_SHORT, GL_FALSE, 16, (void *)8);
-  glVertexAttribPointer(glGetAttribLocation(shaded_program, "zpos"),  2, GL_UNSIGNED_INT, GL_TRUE, 16, (void *)8);
-
-  unsigned int texture;
-  glGenTextures(1, &texture);
-  glBindTexture(GL_TEXTURE_2D, texture);
+  glVertexAttribPointer(glGetAttribLocation(shaded_program, "uv"),  2, GL_UNSIGNED_BYTE, GL_FALSE, 16, (void *)8);
+  glVertexAttribPointer(glGetAttribLocation(shaded_program, "zpos"),  2, GL_UNSIGNED_SHORT,GL_TRUE, 16, (void *)12);
 
   glEnable(GL_DEPTH_TEST);
+  glDepthFunc(GL_LEQUAL);
   glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
+GLuint texture;
+glGenTextures(1, &texture); 
+glBindTexture(GL_TEXTURE_2D, texture); 
+glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 2048, 512, 0, GL_RGB, GL_UNSIGNED_BYTE, vram);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+glBindTexture(GL_TEXTURE_2D, texture);
+glGenerateMipmap(GL_TEXTURE_2D);
 
   glEnableVertexAttribArray(0);
   glEnableVertexAttribArray(1);
+  glEnableVertexAttribArray(2);
+  glEnableVertexAttribArray(3);
 
   gpu_reset();
 }
@@ -247,7 +256,7 @@ void gpu_gp0(uint32_t command) {
 
           gp0_offset = -1;
           shaded_vertices_count += 6;
-          zpos++;
+          zpos--;
           break;
       }
       gp0_offset++;
@@ -259,40 +268,40 @@ void gpu_gp0(uint32_t command) {
           // Ignore color
           break;
         case 1:
-          shaded_vertices[shaded_vertices_count+0].position = command;
-          shaded_vertices[shaded_vertices_count+0].zpos = zpos;
+          textured_vertices[textured_vertices_count+0].position = command;
+          textured_vertices[textured_vertices_count+0].zpos = zpos;
           break;
         case 2:
-          shaded_vertices[shaded_vertices_count+0].uv = command;
+          textured_vertices[textured_vertices_count+0].uv = command;
           break;
         case 3:
-          shaded_vertices[shaded_vertices_count+1].position = command;
-          shaded_vertices[shaded_vertices_count+1].zpos = zpos;
-          shaded_vertices[shaded_vertices_count+3].position = command;
-          shaded_vertices[shaded_vertices_count+3].zpos = zpos;
+          textured_vertices[textured_vertices_count+1].position = command;
+          textured_vertices[textured_vertices_count+1].zpos = zpos;
+          textured_vertices[textured_vertices_count+3].position = command;
+          textured_vertices[textured_vertices_count+3].zpos = zpos;
           break;
         case 4:
-          shaded_vertices[shaded_vertices_count+1].uv = command;
-          shaded_vertices[shaded_vertices_count+3].uv = command;
+          textured_vertices[textured_vertices_count+1].uv = command;
+          textured_vertices[textured_vertices_count+3].uv = command;
           break;
         case 5:
-          shaded_vertices[shaded_vertices_count+2].position = command;
-          shaded_vertices[shaded_vertices_count+2].zpos = zpos;
-          shaded_vertices[shaded_vertices_count+4].position = command;
-          shaded_vertices[shaded_vertices_count+4].zpos = zpos;
+          textured_vertices[textured_vertices_count+2].position = command;
+          textured_vertices[textured_vertices_count+2].zpos = zpos;
+          textured_vertices[textured_vertices_count+4].position = command;
+          textured_vertices[textured_vertices_count+4].zpos = zpos;
         case 6:
-          shaded_vertices[shaded_vertices_count+2].uv = command;
-          shaded_vertices[shaded_vertices_count+4].uv = command;
+          textured_vertices[textured_vertices_count+2].uv = command;
+          textured_vertices[textured_vertices_count+4].uv = command;
           break;
         case 7:
-          shaded_vertices[shaded_vertices_count+5].position = command;
-          shaded_vertices[shaded_vertices_count+5].zpos = zpos;
+          textured_vertices[textured_vertices_count+5].position = command;
+          textured_vertices[textured_vertices_count+5].zpos = zpos;
           break;
         case 8:
-          shaded_vertices[shaded_vertices_count+5].uv = command;
+          textured_vertices[textured_vertices_count+5].uv = command;
           gp0_offset = -1;
-          shaded_vertices_count += 6;
-          zpos++;
+          textured_vertices_count += 6;
+          zpos--;
           break;
       }
       gp0_offset++;
@@ -323,7 +332,7 @@ void gpu_gp0(uint32_t command) {
 
           gp0_offset = -1;
           shaded_vertices_count += 3;
-          zpos++;
+          zpos--;
           break;
       }
       gp0_offset++;
@@ -366,7 +375,7 @@ void gpu_gp0(uint32_t command) {
 
           gp0_offset = -1;
           shaded_vertices_count += 6;
-          zpos++;
+          zpos--;
           break;
       }
       gp0_offset++;
@@ -377,14 +386,14 @@ void gpu_gp0(uint32_t command) {
         gp0_offset++;
         gp0_data_offset = 0;
       } else if(gp0_offset == 3) {
-        uint32_t coord = gp0_data_offset * 2 / (gp0_buffer[2] >> 16) * 1024 + (gp0_data_offset * 2) % (gp0_buffer[2] >> 16) + (gp0_buffer[2] >> 16) * 1024 + (gp0_buffer[2] & 0xffff);
-        ((uint16_t*)vram)[coord] = command >> 16;
-        ((uint16_t*)vram)[coord+1] = command & 0xffff;
+        //uint32_t coord = gp0_data_offset * 2 / (gp0_buffer[2] >> 16) * 1024 + (gp0_data_offset * 2) % (gp0_buffer[2] >> 16) + (gp0_buffer[2] >> 16) * 1024 + (gp0_buffer[2] & 0xffff);
+        //((uint16_t*)vram)[coord] = command >> 16;
+        //((uint16_t*)vram)[coord+1] = command & 0xffff;
         gp0_data_offset++;
         if(gp0_data_offset == ((gp0_buffer[2] >> 16) * (gp0_buffer[2] & 0xffff) + 1 ) / 2) {
           //printf("load data end\n");
-          glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 2048, 512, 0, GL_RGB, GL_UNSIGNED_INT_8_8_8_8, vram);
-          glGenerateMipmap(GL_TEXTURE_2D);
+          //glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 2048, 512, 0, GL_RGB, GL_UNSIGNED_INT_8_8_8_8, vram);
+          //glGenerateMipmap(GL_TEXTURE_2D);
           gp0_offset = 0;
         }
       } else {
@@ -431,10 +440,15 @@ void gpu_gp0(uint32_t command) {
         if (Event.type == SDL_QUIT) exit(0);
       // DRAW!
       glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+      glUseProgram(textured_program);
+      glBufferData(GL_ARRAY_BUFFER, sizeof(textured_vertices), textured_vertices, GL_DYNAMIC_DRAW);
+      glDrawArrays(GL_TRIANGLES, 0, textured_vertices_count);
       glUseProgram(shaded_program);
       glBufferData(GL_ARRAY_BUFFER, sizeof(shaded_vertices), shaded_vertices, GL_DYNAMIC_DRAW);
       glDrawArrays(GL_TRIANGLES, 0, shaded_vertices_count);
-      zpos = 0;
+      shaded_vertices_count = 0;
+      textured_vertices_count = 0;
+      zpos = -1;
       SDL_GL_SwapWindow(Window);
       break;
     case 0xe6000000:

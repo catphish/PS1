@@ -9,7 +9,7 @@ void main()\n\
 {\n\
   gl_Position = vec4(location.x / 320 - 1.0, 1.0 - location.y / 240, zpos, 1.0);\n\
   vcolor = color;\n\
-  vuv = uv;\n\
+  vuv = vec2(uv.x / 2048 - uv.y / 512);\n\
 }";
 
 const char *shadedFragmentSource = "#version 130\n\
