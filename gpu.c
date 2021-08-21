@@ -6,12 +6,20 @@
 #include <GL/glew.h>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_opengl.h>
+#include "gl.h"
 
-uint32_t vertices[6] = {
-  0x000000ff, 0x00000000,
-  0x0000ff00, 0x000000ff,
-  0x00ff0000, 0x0000ffff
+struct vertex {
+  uint32_t color;
+  uint32_t position;
+  uint32_t uv;
+  uint32_t zpos;
 };
+struct vertex shaded_vertices[1024 * 1024];
+struct vertex textured_vertices[1024 * 1024];
+uint32_t shaded_vertices_count, textured_vertices_count;
+uint32_t zpos;
+
+uint8_t vram[1024*1024];
 
 struct __attribute__((packed)) {
   union {
@@ -122,6 +130,75 @@ void gpu_reset() {
   gpu.draw_pixels         = 0;
 }
 
+GLuint vao;
+GLuint vbo;
+GLuint idx;
+GLuint tex;
+GLuint shaded_program;
+GLuint textured_program;
+
+SDL_Window *Window;
+
+void gpu_init() {
+  memset(vram, 0xff, 1024*1024);
+  uint32_t WindowFlags = SDL_WINDOW_OPENGL;
+  Window = SDL_CreateWindow("OpenGL Test", 0, 0, 1280, 960, WindowFlags);
+  SDL_GL_CreateContext(Window);
+
+  glewExperimental = GL_TRUE;
+  glewInit();
+  GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
+  glShaderSource(vertexShader, 1, &vertexSource, NULL);
+  glCompileShader(vertexShader);
+  printCompileStatus("Vertex shader", vertexShader);
+
+  GLuint shadedFragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+  glShaderSource(shadedFragmentShader, 1, &shadedFragmentSource, NULL);
+  glCompileShader(shadedFragmentShader);
+  printCompileStatus("Textured fragment shader", shadedFragmentShader);
+
+  GLuint texturedFragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+  glShaderSource(texturedFragmentShader, 1, &texturedFragmentSource, NULL);
+  glCompileShader(texturedFragmentShader);
+  printCompileStatus("Textured fragment shader", texturedFragmentShader);
+
+  shaded_program = glCreateProgram();
+  glAttachShader(shaded_program, vertexShader);
+  glAttachShader(shaded_program, shadedFragmentShader);
+  glLinkProgram(shaded_program);
+  printLinkStatus("Shaded shader program", shaded_program);
+
+  textured_program = glCreateProgram();
+  glAttachShader(textured_program, vertexShader);
+  glAttachShader(textured_program, texturedFragmentShader);
+  glLinkProgram(textured_program);
+  printLinkStatus("Shaded shader program", textured_program);
+
+  glGenVertexArrays(1, &vao);
+  glBindVertexArray(vao);
+
+  glGenBuffers(1, &vbo);
+  glBindBuffer(GL_ARRAY_BUFFER, vbo);
+
+  glVertexAttribPointer(glGetAttribLocation(shaded_program, "color"), 3, GL_UNSIGNED_BYTE, GL_TRUE, 16, (void *)0);
+  glVertexAttribPointer(glGetAttribLocation(shaded_program, "location"),  2, GL_UNSIGNED_SHORT, GL_FALSE, 16, (void *)4);
+  glVertexAttribPointer(glGetAttribLocation(shaded_program, "uv"),  2, GL_UNSIGNED_SHORT, GL_FALSE, 16, (void *)8);
+  glVertexAttribPointer(glGetAttribLocation(shaded_program, "zpos"),  2, GL_UNSIGNED_INT, GL_TRUE, 16, (void *)8);
+
+  unsigned int texture;
+  glGenTextures(1, &texture);
+  glBindTexture(GL_TEXTURE_2D, texture);
+
+  glEnable(GL_DEPTH_TEST);
+  glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+
+
+  glEnableVertexAttribArray(0);
+  glEnableVertexAttribArray(1);
+
+  gpu_reset();
+}
+
 uint32_t gp0_buffer[12];
 uint32_t gp0_data_offset;
 uint8_t gp0_command;
@@ -138,37 +215,161 @@ void gpu_gp0(uint32_t command) {
     case 0x01000000: // Cache clear, meh
       break;
     case 0x28000000:
-      if(gp0_offset == 4) {
-        //printf("draw command\n");
-        gp0_offset = 0;
-      } else gp0_offset++;
+      // Solid rectangle
+      switch(gp0_offset) {
+        case 0:
+          shaded_vertices[shaded_vertices_count+0].color = command;
+          shaded_vertices[shaded_vertices_count+1].color = command;
+          shaded_vertices[shaded_vertices_count+2].color = command;
+          shaded_vertices[shaded_vertices_count+3].color = command;
+          shaded_vertices[shaded_vertices_count+4].color = command;
+          shaded_vertices[shaded_vertices_count+5].color = command;
+          break;
+        case 1:
+          shaded_vertices[shaded_vertices_count+0].position = command;
+          shaded_vertices[shaded_vertices_count+0].zpos = zpos;
+          break;
+        case 2:
+          shaded_vertices[shaded_vertices_count+1].position = command;
+          shaded_vertices[shaded_vertices_count+1].zpos = zpos;
+          shaded_vertices[shaded_vertices_count+3].position = command;
+          shaded_vertices[shaded_vertices_count+3].zpos = zpos;
+          break;
+        case 3:
+          shaded_vertices[shaded_vertices_count+2].position = command;
+          shaded_vertices[shaded_vertices_count+2].zpos = zpos;
+          shaded_vertices[shaded_vertices_count+4].position = command;
+          shaded_vertices[shaded_vertices_count+4].zpos = zpos;
+          break;
+        case 4:
+          shaded_vertices[shaded_vertices_count+5].position = command;
+          shaded_vertices[shaded_vertices_count+5].zpos = zpos;
+
+          gp0_offset = -1;
+          shaded_vertices_count += 6;
+          zpos++;
+          break;
+      }
+      gp0_offset++;
       break;
     case 0x2c000000:
-      if(gp0_offset == 8) {
-        //printf("draw command\n");
-        gp0_offset = 0;
-      } else gp0_offset++;
+      // Textured rectangle
+      switch(gp0_offset) {
+        case 0:
+          // Ignore color
+          break;
+        case 1:
+          shaded_vertices[shaded_vertices_count+0].position = command;
+          shaded_vertices[shaded_vertices_count+0].zpos = zpos;
+          break;
+        case 2:
+          shaded_vertices[shaded_vertices_count+0].uv = command;
+          break;
+        case 3:
+          shaded_vertices[shaded_vertices_count+1].position = command;
+          shaded_vertices[shaded_vertices_count+1].zpos = zpos;
+          shaded_vertices[shaded_vertices_count+3].position = command;
+          shaded_vertices[shaded_vertices_count+3].zpos = zpos;
+          break;
+        case 4:
+          shaded_vertices[shaded_vertices_count+1].uv = command;
+          shaded_vertices[shaded_vertices_count+3].uv = command;
+          break;
+        case 5:
+          shaded_vertices[shaded_vertices_count+2].position = command;
+          shaded_vertices[shaded_vertices_count+2].zpos = zpos;
+          shaded_vertices[shaded_vertices_count+4].position = command;
+          shaded_vertices[shaded_vertices_count+4].zpos = zpos;
+        case 6:
+          shaded_vertices[shaded_vertices_count+2].uv = command;
+          shaded_vertices[shaded_vertices_count+4].uv = command;
+          break;
+        case 7:
+          shaded_vertices[shaded_vertices_count+5].position = command;
+          shaded_vertices[shaded_vertices_count+5].zpos = zpos;
+          break;
+        case 8:
+          shaded_vertices[shaded_vertices_count+5].uv = command;
+          gp0_offset = -1;
+          shaded_vertices_count += 6;
+          zpos++;
+          break;
+      }
+      gp0_offset++;
       break;
     case 0x30000000:
-      if(gp0_offset == 5) {
-        //printf("draw command\n");
-        vertices[0] = gp0_buffer[0];
-        vertices[1] = gp0_buffer[1];
-        vertices[2] = gp0_buffer[2];
-        vertices[3] = gp0_buffer[3];
-        vertices[4] = gp0_buffer[4];
-        vertices[5] = gp0_buffer[5];
-        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
-        glDrawArrays(GL_TRIANGLES, 0, 3);
+      // Shaded triangle
+      switch(gp0_offset) {
+        case 0:
+          shaded_vertices[shaded_vertices_count+0].color = command;
+          break;
+        case 1:
+          shaded_vertices[shaded_vertices_count+0].position = command;
+          shaded_vertices[shaded_vertices_count+0].zpos = zpos;
+          break;
+        case 2:
+          shaded_vertices[shaded_vertices_count+1].color = command;
+          break;
+        case 3:
+          shaded_vertices[shaded_vertices_count+1].position = command;
+          shaded_vertices[shaded_vertices_count+1].zpos = zpos;
+          break;
+        case 4:
+          shaded_vertices[shaded_vertices_count+2].color = command;
+          break;
+        case 5:
+          shaded_vertices[shaded_vertices_count+2].position = command;
+          shaded_vertices[shaded_vertices_count+2].zpos = zpos;
 
-        gp0_offset = 0;
-      } else gp0_offset++;
+          gp0_offset = -1;
+          shaded_vertices_count += 3;
+          zpos++;
+          break;
+      }
+      gp0_offset++;
       break;
     case 0x38000000:
-      if(gp0_offset == 7) {
-        //printf("draw command\n");
-        gp0_offset = 0;
-      } else gp0_offset++;
+      // Shaded rectangle
+      switch(gp0_offset) {
+        case 0:
+          shaded_vertices[shaded_vertices_count+0].color = command;
+          break;
+        case 1:
+          shaded_vertices[shaded_vertices_count+0].position = command;
+          shaded_vertices[shaded_vertices_count+0].zpos = zpos;
+          break;
+        case 2:
+          shaded_vertices[shaded_vertices_count+1].color = command;
+          shaded_vertices[shaded_vertices_count+3].color = command;
+          break;
+        case 3:
+          shaded_vertices[shaded_vertices_count+1].position = command;
+          shaded_vertices[shaded_vertices_count+1].zpos = zpos;
+          shaded_vertices[shaded_vertices_count+3].position = command;
+          shaded_vertices[shaded_vertices_count+3].zpos = zpos;
+          break;
+        case 4:
+          shaded_vertices[shaded_vertices_count+2].color = command;
+          shaded_vertices[shaded_vertices_count+4].color = command;
+          break;
+        case 5:
+          shaded_vertices[shaded_vertices_count+2].position = command;
+          shaded_vertices[shaded_vertices_count+2].zpos = zpos;
+          shaded_vertices[shaded_vertices_count+4].position = command;
+          shaded_vertices[shaded_vertices_count+4].zpos = zpos;
+        case 6:
+          shaded_vertices[shaded_vertices_count+5].color = command;
+          break;
+        case 7:
+          shaded_vertices[shaded_vertices_count+5].position = command;
+          shaded_vertices[shaded_vertices_count+5].zpos = zpos;
+
+          gp0_offset = -1;
+          shaded_vertices_count += 6;
+          zpos++;
+          break;
+      }
+      gp0_offset++;
       break;
     case 0xa0000000:
       if(gp0_offset == 2) {
@@ -176,9 +377,14 @@ void gpu_gp0(uint32_t command) {
         gp0_offset++;
         gp0_data_offset = 0;
       } else if(gp0_offset == 3) {
+        uint32_t coord = gp0_data_offset * 2 / (gp0_buffer[2] >> 16) * 1024 + (gp0_data_offset * 2) % (gp0_buffer[2] >> 16) + (gp0_buffer[2] >> 16) * 1024 + (gp0_buffer[2] & 0xffff);
+        ((uint16_t*)vram)[coord] = command >> 16;
+        ((uint16_t*)vram)[coord+1] = command & 0xffff;
         gp0_data_offset++;
         if(gp0_data_offset == ((gp0_buffer[2] >> 16) * (gp0_buffer[2] & 0xffff) + 1 ) / 2) {
           //printf("load data end\n");
+          glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 2048, 512, 0, GL_RGB, GL_UNSIGNED_INT_8_8_8_8, vram);
+          glGenerateMipmap(GL_TEXTURE_2D);
           gp0_offset = 0;
         }
       } else {
@@ -220,8 +426,16 @@ void gpu_gp0(uint32_t command) {
     case 0xe5000000:
       gpu.draw_offset_x    = (command >> 0)   & 0x7ff;
       gpu.draw_offset_y    = (command >> 11)  & 0x7ff;
-      SDL_GL_SwapWindow(Window);
+      SDL_Event Event;
+      while (SDL_PollEvent(&Event))
+        if (Event.type == SDL_QUIT) exit(0);
+      // DRAW!
       glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+      glUseProgram(shaded_program);
+      glBufferData(GL_ARRAY_BUFFER, sizeof(shaded_vertices), shaded_vertices, GL_DYNAMIC_DRAW);
+      glDrawArrays(GL_TRIANGLES, 0, shaded_vertices_count);
+      zpos = 0;
+      SDL_GL_SwapWindow(Window);
       break;
     case 0xe6000000:
       gpu.set_mask_bit     = (command >> 0)   & 0x1;
@@ -281,7 +495,7 @@ uint32_t gpu_load_32(uint32_t address) {
   switch(address) {
     case 0x1f801814:
     // Temporary hack to trick bios into continuing during early development
-      gpu.odd_even ^= 1;
+      gpu.vert_res = 0;
       return(gpu.gpustat_32);
     case 0x1f801810:
       return(0);

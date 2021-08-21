@@ -1,19 +1,31 @@
 const char *vertexSource = "#version 130\n\
-in mediump vec2 xy;\n\
-in mediump vec3 rgb;\n\
-out mediump vec3 vcolor;\n\
+in vec2 location;\n\
+in vec3 color;\n\
+in vec2 uv;\n\
+in float zpos;\n\
+out vec3 vcolor;\n\
+out vec2 vuv;\n\
 void main()\n\
 {\n\
-  gl_Position = vec4(2.0 * xy.x / 1024, 2.0 * xy.y / 1024, 0.0, 1.0);\n\
-  vcolor = vec3(1.0 * rgb.r / 255, 1.0 * rgb.g / 255, 1.0 * rgb.b / 255);\n\
+  gl_Position = vec4(location.x / 320 - 1.0, 1.0 - location.y / 240, zpos, 1.0);\n\
+  vcolor = color;\n\
+  vuv = uv;\n\
 }";
 
-const char *fragmentSource = "#version 130\n\
-in mediump vec3 vcolor;\n\
-out mediump vec3 fragColor;\n\
+const char *shadedFragmentSource = "#version 130\n\
+in vec3 vcolor;\n\
+out vec3 fragColor;\n\
 void main()\n\
 {\n\
   fragColor = vcolor;\n\
+}";
+const char *texturedFragmentSource = "#version 130\n\
+in vec2 vuv;\n\
+out vec4 fragColor;\n\
+uniform sampler2D ourTexture;\n\
+void main()\n\
+{\n\
+  fragColor = texture(ourTexture, vuv);\n\
 }";
 
 
