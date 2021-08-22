@@ -122,7 +122,8 @@ struct __attribute__((packed)) vertex {
   uint32_t position;
   uint32_t color;
   uint32_t texture_uv;
-  uint32_t texpage;
+  uint16_t texpage;
+  uint16_t clut;
 };
 
 struct vertex vertices[1024 * 1024];
@@ -165,8 +166,8 @@ void printLinkStatus(const char *step, GLuint context)
 }
 
 void gpu_init() {
-  for(int n=0; n<1024*1024; n++)
-    vram[n] = rand();
+  // for(int n=0; n<1024*1024; n++)
+  //   vram[n] = rand();
 
   uint32_t WindowFlags = SDL_WINDOW_OPENGL;
   Window = SDL_CreateWindow("OpenGL Test", 0, 0, 1280, 960, WindowFlags);
@@ -217,11 +218,13 @@ void gpu_init() {
   glVertexAttribPointer(glGetAttribLocation(program, "position"),  2, GL_UNSIGNED_SHORT, GL_FALSE, 16, (void *)0);
   glVertexAttribPointer(glGetAttribLocation(program, "color"), 3, GL_UNSIGNED_BYTE, GL_TRUE, 16, (void *)4);
   glVertexAttribPointer(glGetAttribLocation(program, "texture_uv"),  2, GL_UNSIGNED_BYTE, GL_FALSE, 16, (void *)8);
-  glVertexAttribIPointer(glGetAttribLocation(program, "texpage"),  1, GL_UNSIGNED_INT, 16, (void *)12);
+  glVertexAttribIPointer(glGetAttribLocation(program, "texpage"),  1, GL_UNSIGNED_SHORT, 16, (void *)12);
+  glVertexAttribIPointer(glGetAttribLocation(program, "clut"),  2, GL_UNSIGNED_BYTE, 16, (void *)14);
   glEnableVertexAttribArray(glGetAttribLocation(program, "color"));
   glEnableVertexAttribArray(glGetAttribLocation(program, "position"));
   glEnableVertexAttribArray(glGetAttribLocation(program, "texture_uv"));
   glEnableVertexAttribArray(glGetAttribLocation(program, "texpage"));
+  glEnableVertexAttribArray(glGetAttribLocation(program, "clut"));
 
 //  glEnable(GL_DEPTH_TEST);
 //  glDepthFunc(GL_LEQUAL);
@@ -292,6 +295,7 @@ void gpu_gp0(uint32_t command) {
       // Textured rectangle
       switch(gp0_offset) {
         case 0:
+          //printf("Drawing textured rectangle.\n");
           // Set base color
           vertices[vertices_count+0].color = command;
           vertices[vertices_count+1].color = command;
@@ -301,17 +305,29 @@ void gpu_gp0(uint32_t command) {
           vertices[vertices_count+5].color = command;
           break;
         case 1:
+          //printf("  %08x", command);
           vertices[vertices_count+0].position = command;
           break;
         case 2:
+          //printf("  %04x\n", command & 0xffff);
+          // CLUT comes from here
+          vertices[vertices_count+0].clut = (command >> 16);
+          vertices[vertices_count+1].clut = (command >> 16);
+          vertices[vertices_count+2].clut = (command >> 16);
+          vertices[vertices_count+3].clut = (command >> 16);
+          vertices[vertices_count+4].clut = (command >> 16);
+          vertices[vertices_count+5].clut = (command >> 16);
+
           vertices[vertices_count+0].texture_uv = command;
           break;
         case 3:
+          //printf("  %08x", command);
           vertices[vertices_count+1].position = command;
           vertices[vertices_count+3].position = command;
           break;
         case 4:
-          // Texture mode come from texpage here
+          //printf("  %04x (%04x)\n", command & 0xffff, command>>16);
+          // Texture mode comes from texpage here
           vertices[vertices_count+0].texpage = (1<<15) | (command >> 16);
           vertices[vertices_count+1].texpage = (1<<15) | (command >> 16);
           vertices[vertices_count+2].texpage = (1<<15) | (command >> 16);
@@ -323,17 +339,21 @@ void gpu_gp0(uint32_t command) {
           vertices[vertices_count+3].texture_uv = command;
           break;
         case 5:
+          //printf("  %08x", command);
           vertices[vertices_count+2].position = command;
           vertices[vertices_count+4].position = command;
           break;
         case 6:
+          //printf("  %04x\n", command & 0xffff);
           vertices[vertices_count+2].texture_uv = command;
           vertices[vertices_count+4].texture_uv = command;
           break;
         case 7:
+          //printf("  %08x", command);
           vertices[vertices_count+5].position = command;
           break;
         case 8:
+          //printf("  %04x\n", command & 0xffff);
           vertices[vertices_count+5].texture_uv = command;
           gp0_offset = -1;
           vertices_count += 6;
@@ -429,12 +449,12 @@ void gpu_gp0(uint32_t command) {
         uint32_t coord = pixels / (gp0_buffer[2] & 0xffff) * 1024 + pixels % (gp0_buffer[2] & 0xffff) + (gp0_buffer[1] >> 16) * 1024 + (gp0_buffer[1] & 0xffff);
         //printf("%08x = %04x\n", coord, command >> 16);
         //printf("%08x = %04x\n", coord+1, command & 0xffff);
-        ((uint16_t*)vram)[coord] = command >> 16;
-        ((uint16_t*)vram)[coord+1] = command & 0xffff;
+        ((uint16_t*)vram)[coord] = command & 0xffff;
+        ((uint16_t*)vram)[coord+1] = command >> 16;
         gp0_data_offset++;
         if(gp0_data_offset == ((gp0_buffer[2] >> 16) * (gp0_buffer[2] & 0xffff) + 1 ) / 2) {
           //printf("load data end\n");
-          glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, 2048/2, 512, 0, GL_RED,  GL_BYTE, vram);
+          glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1024, 512, 0, GL_RGBA, GL_UNSIGNED_SHORT_4_4_4_4, vram);
           glGenerateMipmap(GL_TEXTURE_2D);
           gp0_offset = 0;
         }
@@ -481,6 +501,7 @@ void gpu_gp0(uint32_t command) {
       while (SDL_PollEvent(&Event))
         if (Event.type == SDL_QUIT) exit(0);
       // DRAW!
+      //printf("FRAME!\n");
       glClear(GL_COLOR_BUFFER_BIT);
       glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
       glDrawArrays(GL_TRIANGLES, 0, vertices_count);

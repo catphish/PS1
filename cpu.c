@@ -329,10 +329,10 @@ void decode_and_execute(uint32_t instruction) {
       cpu_set_reg(rt, (int16_t)memory_load_16(location));
       break;
     case 0x22:
-      //printf("lwl\n");
+      // lwl
       location = cpu.reg[rs] + (int16_t)imm;
       aligned_word = memory_load_32(location & ~3);
-      switch(location & ~3) {
+      switch(location & 3) {
         case 0: cpu.reg[rt] = (cpu.reg[rt] & 0x00ffffff) | (aligned_word << 24); break;
         case 1: cpu.reg[rt] = (cpu.reg[rt] & 0x0000ffff) | (aligned_word << 16); break;
         case 2: cpu.reg[rt] = (cpu.reg[rt] & 0x000000ff) | (aligned_word << 8); break;
@@ -355,10 +355,10 @@ void decode_and_execute(uint32_t instruction) {
       cpu_set_reg(rt, (uint16_t)memory_load_16(location));
       break;
     case 0x26:
-      //printf("lwr\n");
+      // lwr
       location = cpu.reg[rs] + (int16_t)imm;
       aligned_word = memory_load_32(location & ~3);
-      switch(location & ~3) {
+      switch(location & 3) {
         case 0: cpu.reg[rt] = (cpu.reg[rt] & 0x00000000) | (aligned_word >> 0); break;
         case 1: cpu.reg[rt] = (cpu.reg[rt] & 0xff000000) | (aligned_word >> 8); break;
         case 2: cpu.reg[rt] = (cpu.reg[rt] & 0xffff0000) | (aligned_word >> 16); break;
@@ -379,7 +379,7 @@ void decode_and_execute(uint32_t instruction) {
       location = cpu.reg[rs] + (int16_t)imm;
       //printf("swl");
       aligned_word = memory_load_32(location & ~3);
-      switch(location & ~3) {
+      switch(location & 3) {
         case 0: aligned_word = (aligned_word & 0xffffff00) | (cpu.reg[rt] >> 24); break;
         case 1: aligned_word = (aligned_word & 0xffff0000) | (cpu.reg[rt] >> 16); break;
         case 2: aligned_word = (aligned_word & 0xff000000) | (cpu.reg[rt] >> 8); break;
@@ -396,7 +396,7 @@ void decode_and_execute(uint32_t instruction) {
       location = cpu.reg[rs] + (int16_t)imm;
       //printf("swr");
       aligned_word = memory_load_32(location & ~3);
-      switch(location & ~3) {
+      switch(location & 3) {
         case 0: aligned_word = (aligned_word & 0x00000000) | (cpu.reg[rt] << 0); break;
         case 1: aligned_word = (aligned_word & 0x000000ff) | (cpu.reg[rt] << 8); break;
         case 2: aligned_word = (aligned_word & 0x0000ffff) | (cpu.reg[rt] << 16); break;
