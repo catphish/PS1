@@ -122,7 +122,7 @@ struct __attribute__((packed)) vertex {
   uint32_t position;
   uint32_t color;
   uint32_t texture_uv;
-  uint32_t texture_mode;
+  uint32_t texpage;
 };
 
 struct vertex vertices[1024 * 1024];
@@ -217,11 +217,11 @@ void gpu_init() {
   glVertexAttribPointer(glGetAttribLocation(program, "position"),  2, GL_UNSIGNED_SHORT, GL_FALSE, 16, (void *)0);
   glVertexAttribPointer(glGetAttribLocation(program, "color"), 3, GL_UNSIGNED_BYTE, GL_TRUE, 16, (void *)4);
   glVertexAttribPointer(glGetAttribLocation(program, "texture_uv"),  2, GL_UNSIGNED_BYTE, GL_FALSE, 16, (void *)8);
-  glVertexAttribIPointer(glGetAttribLocation(program, "texture_mode"),  1, GL_INT, 16, (void *)12);
+  glVertexAttribIPointer(glGetAttribLocation(program, "texpage"),  1, GL_UNSIGNED_INT, 16, (void *)12);
   glEnableVertexAttribArray(glGetAttribLocation(program, "color"));
   glEnableVertexAttribArray(glGetAttribLocation(program, "position"));
   glEnableVertexAttribArray(glGetAttribLocation(program, "texture_uv"));
-  glEnableVertexAttribArray(glGetAttribLocation(program, "texture_mode"));
+  glEnableVertexAttribArray(glGetAttribLocation(program, "texpage"));
 
 //  glEnable(GL_DEPTH_TEST);
 //  glDepthFunc(GL_LEQUAL);
@@ -261,12 +261,12 @@ void gpu_gp0(uint32_t command) {
           vertices[vertices_count+4].color = command;
           vertices[vertices_count+5].color = command;
           // No textures
-          vertices[vertices_count+0].texture_mode = 3;
-          vertices[vertices_count+1].texture_mode = 3;
-          vertices[vertices_count+2].texture_mode = 3;
-          vertices[vertices_count+3].texture_mode = 3;
-          vertices[vertices_count+4].texture_mode = 3;
-          vertices[vertices_count+5].texture_mode = 3;
+          vertices[vertices_count+0].texpage = 0;
+          vertices[vertices_count+1].texpage = 0;
+          vertices[vertices_count+2].texpage = 0;
+          vertices[vertices_count+3].texpage = 0;
+          vertices[vertices_count+4].texpage = 0;
+          vertices[vertices_count+5].texpage = 0;
           break;
         case 1:
           vertices[vertices_count+0].position = command;
@@ -312,12 +312,12 @@ void gpu_gp0(uint32_t command) {
           break;
         case 4:
           // Texture mode come from texpage here
-          vertices[vertices_count+0].texture_mode = (command >> 7) & 0x3;
-          vertices[vertices_count+1].texture_mode = (command >> 7) & 0x3;
-          vertices[vertices_count+2].texture_mode = (command >> 7) & 0x3;
-          vertices[vertices_count+3].texture_mode = (command >> 7) & 0x3;
-          vertices[vertices_count+4].texture_mode = (command >> 7) & 0x3;
-          vertices[vertices_count+5].texture_mode = (command >> 7) & 0x3;
+          vertices[vertices_count+0].texpage = (1<<15) | (command >> 16);
+          vertices[vertices_count+1].texpage = (1<<15) | (command >> 16);
+          vertices[vertices_count+2].texpage = (1<<15) | (command >> 16);
+          vertices[vertices_count+3].texpage = (1<<15) | (command >> 16);
+          vertices[vertices_count+4].texpage = (1<<15) | (command >> 16);
+          vertices[vertices_count+5].texpage = (1<<15) | (command >> 16);
 
           vertices[vertices_count+1].texture_uv = command;
           vertices[vertices_count+3].texture_uv = command;
@@ -347,12 +347,12 @@ void gpu_gp0(uint32_t command) {
         case 0:
           vertices[vertices_count+0].color = command;
           // No textures
-          vertices[vertices_count+0].texture_mode = 3;
-          vertices[vertices_count+1].texture_mode = 3;
-          vertices[vertices_count+2].texture_mode = 3;
-          vertices[vertices_count+3].texture_mode = 3;
-          vertices[vertices_count+4].texture_mode = 3;
-          vertices[vertices_count+5].texture_mode = 3;
+          vertices[vertices_count+0].texpage = 0;
+          vertices[vertices_count+1].texpage = 0;
+          vertices[vertices_count+2].texpage = 0;
+          vertices[vertices_count+3].texpage = 0;
+          vertices[vertices_count+4].texpage = 0;
+          vertices[vertices_count+5].texpage = 0;
           break;
         case 1:
           vertices[vertices_count+0].position = command;
@@ -381,12 +381,12 @@ void gpu_gp0(uint32_t command) {
         case 0:
           vertices[vertices_count+0].color = command;
           // No textures
-          vertices[vertices_count+0].texture_mode = 3;
-          vertices[vertices_count+1].texture_mode = 3;
-          vertices[vertices_count+2].texture_mode = 3;
-          vertices[vertices_count+3].texture_mode = 3;
-          vertices[vertices_count+4].texture_mode = 3;
-          vertices[vertices_count+5].texture_mode = 3;
+          vertices[vertices_count+0].texpage = 0;
+          vertices[vertices_count+1].texpage = 0;
+          vertices[vertices_count+2].texpage = 0;
+          vertices[vertices_count+3].texpage = 0;
+          vertices[vertices_count+4].texpage = 0;
+          vertices[vertices_count+5].texpage = 0;
           break;
         case 1:
           vertices[vertices_count+0].position = command;
