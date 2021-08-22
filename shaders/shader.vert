@@ -4,14 +4,14 @@ in vec2 position;
 in vec3 color;
 in vec2 texture_uv;
 in uint texpage;
-in uvec2 clut;
+in uint clut;
 
 out vec3 frag_color;
 out vec2 frag_texture_uv;
 flat out uint frag_texture_enable;
 flat out uint frag_texture_mode;
 flat out uvec2 frag_texture_base;
-flat out uvec2 frag_clut;
+flat out uint frag_clut;
 
 void main()
 {

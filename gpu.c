@@ -219,7 +219,7 @@ void gpu_init() {
   glVertexAttribPointer(glGetAttribLocation(program, "color"), 3, GL_UNSIGNED_BYTE, GL_TRUE, 16, (void *)4);
   glVertexAttribPointer(glGetAttribLocation(program, "texture_uv"),  2, GL_UNSIGNED_BYTE, GL_FALSE, 16, (void *)8);
   glVertexAttribIPointer(glGetAttribLocation(program, "texpage"),  1, GL_UNSIGNED_SHORT, 16, (void *)12);
-  glVertexAttribIPointer(glGetAttribLocation(program, "clut"),  2, GL_UNSIGNED_BYTE, 16, (void *)14);
+  glVertexAttribIPointer(glGetAttribLocation(program, "clut"),  1, GL_UNSIGNED_SHORT, 16, (void *)14);
   glEnableVertexAttribArray(glGetAttribLocation(program, "color"));
   glEnableVertexAttribArray(glGetAttribLocation(program, "position"));
   glEnableVertexAttribArray(glGetAttribLocation(program, "texture_uv"));
@@ -233,6 +233,8 @@ void gpu_init() {
   GLuint texture;
   glGenTextures(1, &texture); 
   glBindTexture(GL_TEXTURE_2D, texture); 
+  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
   gpu_reset();
 }
@@ -309,7 +311,7 @@ void gpu_gp0(uint32_t command) {
           vertices[vertices_count+0].position = command;
           break;
         case 2:
-          //printf("  %04x\n", command & 0xffff);
+          //printf("  %04x\n", command >> 16);
           // CLUT comes from here
           vertices[vertices_count+0].clut = (command >> 16);
           vertices[vertices_count+1].clut = (command >> 16);
@@ -454,7 +456,7 @@ void gpu_gp0(uint32_t command) {
         gp0_data_offset++;
         if(gp0_data_offset == ((gp0_buffer[2] >> 16) * (gp0_buffer[2] & 0xffff) + 1 ) / 2) {
           //printf("load data end\n");
-          glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1024, 512, 0, GL_RGBA, GL_UNSIGNED_SHORT_4_4_4_4, vram);
+          glTexImage2D(GL_TEXTURE_2D, 0, GL_R16UI, 1024, 512, 0, GL_RED_INTEGER, GL_UNSIGNED_SHORT, vram);
           glGenerateMipmap(GL_TEXTURE_2D);
           gp0_offset = 0;
         }
