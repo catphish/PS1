@@ -1,26 +1,13 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include "memory.h"
 
 #include <GL/glew.h>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_opengl.h>
-#include "gl.h"
-
-struct vertex {
-  uint32_t color;
-  uint32_t position;
-  uint32_t uv;
-  uint16_t zpos;
-  uint16_t res;
-};
-struct vertex shaded_vertices[1024 * 1024];
-struct vertex textured_vertices[1024 * 1024];
-uint32_t shaded_vertices_count, textured_vertices_count;
-uint16_t zpos;
-
-uint8_t vram[1024*1024];
 
 struct __attribute__((packed)) {
   union {
@@ -131,79 +118,118 @@ void gpu_reset() {
   gpu.draw_pixels         = 0;
 }
 
+struct __attribute__((packed)) vertex {
+  uint32_t position;
+  uint32_t color;
+  uint32_t texture_uv;
+  uint32_t texture_mode;
+};
+
+struct vertex vertices[1024 * 1024];
+uint32_t vertices_count;
+
+uint8_t vram[1024*1024];
+char vertex_shader_source[1024*1024];
+char fragment_shader_source[1024*1024];
+
 GLuint vao;
 GLuint vbo;
-GLuint idx;
 GLuint tex;
-GLuint shaded_program;
-GLuint textured_program;
+GLuint program;
 
 SDL_Window *Window;
+
+void printStatus(const char *step, GLuint context, GLuint status)
+{
+  GLint result = GL_FALSE;
+  glGetShaderiv(context, status, &result);
+  if (result == GL_FALSE) {
+    char buffer[1024];
+    if (status == GL_COMPILE_STATUS)
+      glGetShaderInfoLog(context, 1024, NULL, buffer);
+    else
+      glGetProgramInfoLog(context, 1024, NULL, buffer);
+    if (buffer[0])
+      fprintf(stderr, "%s: %s\n", step, buffer);
+  };
+}
+
+void printCompileStatus(const char *step, GLuint context)
+{
+  printStatus(step, context, GL_COMPILE_STATUS);
+}
+
+void printLinkStatus(const char *step, GLuint context)
+{
+  printStatus(step, context, GL_LINK_STATUS);
+}
 
 void gpu_init() {
   for(int n=0; n<1024*1024; n++)
     vram[n] = rand();
+
   uint32_t WindowFlags = SDL_WINDOW_OPENGL;
   Window = SDL_CreateWindow("OpenGL Test", 0, 0, 1280, 960, WindowFlags);
   SDL_GL_CreateContext(Window);
 
   glewExperimental = GL_TRUE;
   glewInit();
-  GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
-  glShaderSource(vertexShader, 1, &vertexSource, NULL);
-  glCompileShader(vertexShader);
-  printCompileStatus("Vertex shader", vertexShader);
 
-  GLuint shadedFragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-  glShaderSource(shadedFragmentShader, 1, &shadedFragmentSource, NULL);
-  glCompileShader(shadedFragmentShader);
-  printCompileStatus("Textured fragment shader", shadedFragmentShader);
+  int f, n;
 
-  GLuint texturedFragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-  glShaderSource(texturedFragmentShader, 1, &texturedFragmentSource, NULL);
-  glCompileShader(texturedFragmentShader);
-  printCompileStatus("Textured fragment shader", texturedFragmentShader);
+  f = open("shaders/shader.vert", O_RDONLY);
+  n = read(f, vertex_shader_source, 1024*1024);
+  if(n < 0) { printf("Failed to load vertex shader source!\n"); exit(1); }
+  vertex_shader_source[n] = 0;
+  close(f);
 
-  shaded_program = glCreateProgram();
-  glAttachShader(shaded_program, vertexShader);
-  glAttachShader(shaded_program, shadedFragmentShader);
-  glLinkProgram(shaded_program);
-  printLinkStatus("Shaded shader program", shaded_program);
+  f = open("shaders/shader.frag", O_RDONLY);
+  n = read(f, fragment_shader_source, 1024*1024);
+  if(n < 0) { printf("Failed to load vertex shader source!\n"); exit(1); }
+  fragment_shader_source[n] = 0;
+  close(f);
 
-  textured_program = glCreateProgram();
-  glAttachShader(textured_program, vertexShader);
-  glAttachShader(textured_program, texturedFragmentShader);
-  glLinkProgram(textured_program);
-  printLinkStatus("Shaded shader program", textured_program);
+  char *vertex_shader_sources = vertex_shader_source;
+  char *fragment_shader_sources = fragment_shader_source;
 
-  glGenVertexArrays(1, &vao);
-  glBindVertexArray(vao);
+  GLuint vertex_shader = glCreateShader(GL_VERTEX_SHADER);
+  glShaderSource(vertex_shader, 1, (const GLchar**)&vertex_shader_sources, NULL);
+  glCompileShader(vertex_shader);
+  printCompileStatus("Vertex shader", vertex_shader);
+
+  GLuint fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
+  glShaderSource(fragment_shader, 1, (const GLchar**)&fragment_shader_sources, NULL);
+  glCompileShader(fragment_shader);
+  printCompileStatus("Fragment shader", fragment_shader);
+
+  program = glCreateProgram();
+  glAttachShader(program, vertex_shader);
+  glAttachShader(program, fragment_shader);
+  glLinkProgram(program);
+  printLinkStatus("Shader program", program);
+  glUseProgram(program);
 
   glGenBuffers(1, &vbo);
   glBindBuffer(GL_ARRAY_BUFFER, vbo);
 
-  glVertexAttribPointer(glGetAttribLocation(shaded_program, "color"), 3, GL_UNSIGNED_BYTE, GL_TRUE, 16, (void *)0);
-  glVertexAttribPointer(glGetAttribLocation(shaded_program, "location"),  2, GL_UNSIGNED_SHORT, GL_FALSE, 16, (void *)4);
-  glVertexAttribPointer(glGetAttribLocation(shaded_program, "uv"),  2, GL_UNSIGNED_BYTE, GL_FALSE, 16, (void *)8);
-  glVertexAttribPointer(glGetAttribLocation(shaded_program, "zpos"),  2, GL_UNSIGNED_SHORT,GL_TRUE, 16, (void *)12);
+  glGenVertexArrays(1, &vao);
+  glBindVertexArray(vao);
+  glVertexAttribPointer(glGetAttribLocation(program, "position"),  2, GL_UNSIGNED_SHORT, GL_FALSE, 16, (void *)0);
+  glVertexAttribPointer(glGetAttribLocation(program, "color"), 3, GL_UNSIGNED_BYTE, GL_TRUE, 16, (void *)4);
+  glVertexAttribPointer(glGetAttribLocation(program, "texture_uv"),  2, GL_UNSIGNED_BYTE, GL_FALSE, 16, (void *)8);
+  glVertexAttribIPointer(glGetAttribLocation(program, "texture_mode"),  1, GL_INT, 16, (void *)12);
+  glEnableVertexAttribArray(glGetAttribLocation(program, "color"));
+  glEnableVertexAttribArray(glGetAttribLocation(program, "position"));
+  glEnableVertexAttribArray(glGetAttribLocation(program, "texture_uv"));
+  glEnableVertexAttribArray(glGetAttribLocation(program, "texture_mode"));
 
-  glEnable(GL_DEPTH_TEST);
-  glDepthFunc(GL_LEQUAL);
+//  glEnable(GL_DEPTH_TEST);
+//  glDepthFunc(GL_LEQUAL);
   glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
-GLuint texture;
-glGenTextures(1, &texture); 
-glBindTexture(GL_TEXTURE_2D, texture); 
-glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 2048, 512, 0, GL_RGB, GL_UNSIGNED_BYTE, vram);
-glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-glBindTexture(GL_TEXTURE_2D, texture);
-glGenerateMipmap(GL_TEXTURE_2D);
-
-  glEnableVertexAttribArray(0);
-  glEnableVertexAttribArray(1);
-  glEnableVertexAttribArray(2);
-  glEnableVertexAttribArray(3);
+  GLuint texture;
+  glGenTextures(1, &texture); 
+  glBindTexture(GL_TEXTURE_2D, texture); 
 
   gpu_reset();
 }
@@ -227,36 +253,37 @@ void gpu_gp0(uint32_t command) {
       // Solid rectangle
       switch(gp0_offset) {
         case 0:
-          shaded_vertices[shaded_vertices_count+0].color = command;
-          shaded_vertices[shaded_vertices_count+1].color = command;
-          shaded_vertices[shaded_vertices_count+2].color = command;
-          shaded_vertices[shaded_vertices_count+3].color = command;
-          shaded_vertices[shaded_vertices_count+4].color = command;
-          shaded_vertices[shaded_vertices_count+5].color = command;
+          // All vertices same color
+          vertices[vertices_count+0].color = command;
+          vertices[vertices_count+1].color = command;
+          vertices[vertices_count+2].color = command;
+          vertices[vertices_count+3].color = command;
+          vertices[vertices_count+4].color = command;
+          vertices[vertices_count+5].color = command;
+          // No textures
+          vertices[vertices_count+0].texture_mode = 3;
+          vertices[vertices_count+1].texture_mode = 3;
+          vertices[vertices_count+2].texture_mode = 3;
+          vertices[vertices_count+3].texture_mode = 3;
+          vertices[vertices_count+4].texture_mode = 3;
+          vertices[vertices_count+5].texture_mode = 3;
           break;
         case 1:
-          shaded_vertices[shaded_vertices_count+0].position = command;
-          shaded_vertices[shaded_vertices_count+0].zpos = zpos;
+          vertices[vertices_count+0].position = command;
           break;
         case 2:
-          shaded_vertices[shaded_vertices_count+1].position = command;
-          shaded_vertices[shaded_vertices_count+1].zpos = zpos;
-          shaded_vertices[shaded_vertices_count+3].position = command;
-          shaded_vertices[shaded_vertices_count+3].zpos = zpos;
+          vertices[vertices_count+1].position = command;
+          vertices[vertices_count+3].position = command;
           break;
         case 3:
-          shaded_vertices[shaded_vertices_count+2].position = command;
-          shaded_vertices[shaded_vertices_count+2].zpos = zpos;
-          shaded_vertices[shaded_vertices_count+4].position = command;
-          shaded_vertices[shaded_vertices_count+4].zpos = zpos;
+          vertices[vertices_count+2].position = command;
+          vertices[vertices_count+4].position = command;
           break;
         case 4:
-          shaded_vertices[shaded_vertices_count+5].position = command;
-          shaded_vertices[shaded_vertices_count+5].zpos = zpos;
+          vertices[vertices_count+5].position = command;
 
           gp0_offset = -1;
-          shaded_vertices_count += 6;
-          zpos--;
+          vertices_count += 6;
           break;
       }
       gp0_offset++;
@@ -265,43 +292,51 @@ void gpu_gp0(uint32_t command) {
       // Textured rectangle
       switch(gp0_offset) {
         case 0:
-          // Ignore color
+          // Set base color
+          vertices[vertices_count+0].color = command;
+          vertices[vertices_count+1].color = command;
+          vertices[vertices_count+2].color = command;
+          vertices[vertices_count+3].color = command;
+          vertices[vertices_count+4].color = command;
+          vertices[vertices_count+5].color = command;
           break;
         case 1:
-          textured_vertices[textured_vertices_count+0].position = command;
-          textured_vertices[textured_vertices_count+0].zpos = zpos;
+          vertices[vertices_count+0].position = command;
           break;
         case 2:
-          textured_vertices[textured_vertices_count+0].uv = command;
+          vertices[vertices_count+0].texture_uv = command;
           break;
         case 3:
-          textured_vertices[textured_vertices_count+1].position = command;
-          textured_vertices[textured_vertices_count+1].zpos = zpos;
-          textured_vertices[textured_vertices_count+3].position = command;
-          textured_vertices[textured_vertices_count+3].zpos = zpos;
+          vertices[vertices_count+1].position = command;
+          vertices[vertices_count+3].position = command;
           break;
         case 4:
-          textured_vertices[textured_vertices_count+1].uv = command;
-          textured_vertices[textured_vertices_count+3].uv = command;
+          // Texture mode come from texpage here
+          vertices[vertices_count+0].texture_mode = (command >> 7) & 0x3;
+          vertices[vertices_count+1].texture_mode = (command >> 7) & 0x3;
+          vertices[vertices_count+2].texture_mode = (command >> 7) & 0x3;
+          vertices[vertices_count+3].texture_mode = (command >> 7) & 0x3;
+          vertices[vertices_count+4].texture_mode = (command >> 7) & 0x3;
+          vertices[vertices_count+5].texture_mode = (command >> 7) & 0x3;
+
+          vertices[vertices_count+1].texture_uv = command;
+          vertices[vertices_count+3].texture_uv = command;
           break;
         case 5:
-          textured_vertices[textured_vertices_count+2].position = command;
-          textured_vertices[textured_vertices_count+2].zpos = zpos;
-          textured_vertices[textured_vertices_count+4].position = command;
-          textured_vertices[textured_vertices_count+4].zpos = zpos;
+          vertices[vertices_count+2].position = command;
+          vertices[vertices_count+4].position = command;
+          break;
         case 6:
-          textured_vertices[textured_vertices_count+2].uv = command;
-          textured_vertices[textured_vertices_count+4].uv = command;
+          vertices[vertices_count+2].texture_uv = command;
+          vertices[vertices_count+4].texture_uv = command;
           break;
         case 7:
-          textured_vertices[textured_vertices_count+5].position = command;
-          textured_vertices[textured_vertices_count+5].zpos = zpos;
+          vertices[vertices_count+5].position = command;
           break;
         case 8:
-          textured_vertices[textured_vertices_count+5].uv = command;
+          vertices[vertices_count+5].texture_uv = command;
           gp0_offset = -1;
-          textured_vertices_count += 6;
-          zpos--;
+          vertices_count += 6;
           break;
       }
       gp0_offset++;
@@ -310,29 +345,32 @@ void gpu_gp0(uint32_t command) {
       // Shaded triangle
       switch(gp0_offset) {
         case 0:
-          shaded_vertices[shaded_vertices_count+0].color = command;
+          vertices[vertices_count+0].color = command;
+          // No textures
+          vertices[vertices_count+0].texture_mode = 3;
+          vertices[vertices_count+1].texture_mode = 3;
+          vertices[vertices_count+2].texture_mode = 3;
+          vertices[vertices_count+3].texture_mode = 3;
+          vertices[vertices_count+4].texture_mode = 3;
+          vertices[vertices_count+5].texture_mode = 3;
           break;
         case 1:
-          shaded_vertices[shaded_vertices_count+0].position = command;
-          shaded_vertices[shaded_vertices_count+0].zpos = zpos;
+          vertices[vertices_count+0].position = command;
           break;
         case 2:
-          shaded_vertices[shaded_vertices_count+1].color = command;
+          vertices[vertices_count+1].color = command;
           break;
         case 3:
-          shaded_vertices[shaded_vertices_count+1].position = command;
-          shaded_vertices[shaded_vertices_count+1].zpos = zpos;
+          vertices[vertices_count+1].position = command;
           break;
         case 4:
-          shaded_vertices[shaded_vertices_count+2].color = command;
+          vertices[vertices_count+2].color = command;
           break;
         case 5:
-          shaded_vertices[shaded_vertices_count+2].position = command;
-          shaded_vertices[shaded_vertices_count+2].zpos = zpos;
+          vertices[vertices_count+2].position = command;
 
           gp0_offset = -1;
-          shaded_vertices_count += 3;
-          zpos--;
+          vertices_count += 3;
           break;
       }
       gp0_offset++;
@@ -341,59 +379,63 @@ void gpu_gp0(uint32_t command) {
       // Shaded rectangle
       switch(gp0_offset) {
         case 0:
-          shaded_vertices[shaded_vertices_count+0].color = command;
+          vertices[vertices_count+0].color = command;
+          // No textures
+          vertices[vertices_count+0].texture_mode = 3;
+          vertices[vertices_count+1].texture_mode = 3;
+          vertices[vertices_count+2].texture_mode = 3;
+          vertices[vertices_count+3].texture_mode = 3;
+          vertices[vertices_count+4].texture_mode = 3;
+          vertices[vertices_count+5].texture_mode = 3;
           break;
         case 1:
-          shaded_vertices[shaded_vertices_count+0].position = command;
-          shaded_vertices[shaded_vertices_count+0].zpos = zpos;
+          vertices[vertices_count+0].position = command;
           break;
         case 2:
-          shaded_vertices[shaded_vertices_count+1].color = command;
-          shaded_vertices[shaded_vertices_count+3].color = command;
+          vertices[vertices_count+1].color = command;
+          vertices[vertices_count+3].color = command;
           break;
         case 3:
-          shaded_vertices[shaded_vertices_count+1].position = command;
-          shaded_vertices[shaded_vertices_count+1].zpos = zpos;
-          shaded_vertices[shaded_vertices_count+3].position = command;
-          shaded_vertices[shaded_vertices_count+3].zpos = zpos;
+          vertices[vertices_count+1].position = command;
+          vertices[vertices_count+3].position = command;
           break;
         case 4:
-          shaded_vertices[shaded_vertices_count+2].color = command;
-          shaded_vertices[shaded_vertices_count+4].color = command;
+          vertices[vertices_count+2].color = command;
+          vertices[vertices_count+4].color = command;
           break;
         case 5:
-          shaded_vertices[shaded_vertices_count+2].position = command;
-          shaded_vertices[shaded_vertices_count+2].zpos = zpos;
-          shaded_vertices[shaded_vertices_count+4].position = command;
-          shaded_vertices[shaded_vertices_count+4].zpos = zpos;
+          vertices[vertices_count+2].position = command;
+          vertices[vertices_count+4].position = command;
         case 6:
-          shaded_vertices[shaded_vertices_count+5].color = command;
+          vertices[vertices_count+5].color = command;
           break;
         case 7:
-          shaded_vertices[shaded_vertices_count+5].position = command;
-          shaded_vertices[shaded_vertices_count+5].zpos = zpos;
+          vertices[vertices_count+5].position = command;
 
           gp0_offset = -1;
-          shaded_vertices_count += 6;
-          zpos--;
+          vertices_count += 6;
           break;
       }
       gp0_offset++;
       break;
     case 0xa0000000:
       if(gp0_offset == 2) {
-        //printf("load data start\n");
+        //printf("load data.\n");
+        //printf("destination %08x dimensions %08x\n", gp0_buffer[1], gp0_buffer[2]);
         gp0_offset++;
         gp0_data_offset = 0;
       } else if(gp0_offset == 3) {
-        //uint32_t coord = gp0_data_offset * 2 / (gp0_buffer[2] >> 16) * 1024 + (gp0_data_offset * 2) % (gp0_buffer[2] >> 16) + (gp0_buffer[2] >> 16) * 1024 + (gp0_buffer[2] & 0xffff);
-        //((uint16_t*)vram)[coord] = command >> 16;
-        //((uint16_t*)vram)[coord+1] = command & 0xffff;
+        uint32_t pixels = gp0_data_offset * 2;
+        uint32_t coord = pixels / (gp0_buffer[2] & 0xffff) * 1024 + pixels % (gp0_buffer[2] & 0xffff) + (gp0_buffer[1] >> 16) * 1024 + (gp0_buffer[1] & 0xffff);
+        //printf("%08x = %04x\n", coord, command >> 16);
+        //printf("%08x = %04x\n", coord+1, command & 0xffff);
+        ((uint16_t*)vram)[coord] = command >> 16;
+        ((uint16_t*)vram)[coord+1] = command & 0xffff;
         gp0_data_offset++;
         if(gp0_data_offset == ((gp0_buffer[2] >> 16) * (gp0_buffer[2] & 0xffff) + 1 ) / 2) {
           //printf("load data end\n");
-          //glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 2048, 512, 0, GL_RGB, GL_UNSIGNED_INT_8_8_8_8, vram);
-          //glGenerateMipmap(GL_TEXTURE_2D);
+          glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, 2048/2, 512, 0, GL_RED,  GL_BYTE, vram);
+          glGenerateMipmap(GL_TEXTURE_2D);
           gp0_offset = 0;
         }
       } else {
@@ -439,16 +481,10 @@ void gpu_gp0(uint32_t command) {
       while (SDL_PollEvent(&Event))
         if (Event.type == SDL_QUIT) exit(0);
       // DRAW!
-      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-      glUseProgram(textured_program);
-      glBufferData(GL_ARRAY_BUFFER, sizeof(textured_vertices), textured_vertices, GL_DYNAMIC_DRAW);
-      glDrawArrays(GL_TRIANGLES, 0, textured_vertices_count);
-      glUseProgram(shaded_program);
-      glBufferData(GL_ARRAY_BUFFER, sizeof(shaded_vertices), shaded_vertices, GL_DYNAMIC_DRAW);
-      glDrawArrays(GL_TRIANGLES, 0, shaded_vertices_count);
-      shaded_vertices_count = 0;
-      textured_vertices_count = 0;
-      zpos = -1;
+      glClear(GL_COLOR_BUFFER_BIT);
+      glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
+      glDrawArrays(GL_TRIANGLES, 0, vertices_count);
+      vertices_count = 0;
       SDL_GL_SwapWindow(Window);
       break;
     case 0xe6000000:
